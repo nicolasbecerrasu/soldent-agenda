@@ -5,6 +5,9 @@ echo "=========================================================="
 echo "ðŸš€ INICIANDO SOLDENT - AGENDA ODONTOLÃ“GICA (CLOUD/DOCKER)"
 echo "=========================================================="
 
+APP_PORT="${PORT:-8000}"
+export API_BACKEND_URL="http://127.0.0.1:${APP_PORT}"
+
 # 1. Configurar directorio persistente para Baileys
 if [ -d "/data" ]; then
     echo "ðŸ“ Almacenamiento persistente detectado en /data"
@@ -17,7 +20,7 @@ else
 fi
 
 # 2. Configurar URL pÃºblica dinÃ¡mica segÃºn la plataforma (Render, Koyeb, Hugging Face)
-if [ -z "$PUBLIC_BASE_URL" ]; then
+if [ -z "$PUBLIC_BASE_URL" ] || [[ "$PUBLIC_BASE_URL" == *"192.168"* ]] || [[ "$PUBLIC_BASE_URL" == *"localhost"* ]]; then
     if [ -n "$RENDER_EXTERNAL_URL" ]; then
         export PUBLIC_BASE_URL="$RENDER_EXTERNAL_URL"
         echo "ðŸŒ Render detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
@@ -53,6 +56,5 @@ echo "â° [3/4] Iniciando ciclo de recordatorios y sincronizaciÃ³n..."
 ) &
 
 # 6. Iniciar servidor principal FastAPI en el puerto dinÃ¡mico de la plataforma
-APP_PORT="${PORT:-8000}"
 echo "ðŸŒ [4/4] Iniciando FastAPI en puerto $APP_PORT..."
 exec uvicorn main:app --host 0.0.0.0 --port "$APP_PORT"
