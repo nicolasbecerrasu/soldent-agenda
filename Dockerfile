@@ -44,12 +44,12 @@ RUN cd whatsapp-gateway && npm install --omit=dev
 # Copiar el código fuente completo del proyecto (incluye frontend/dist)
 COPY --chown=user:user . .
 
-# Permisos para el script de inicio
-RUN chmod +x /app/start.sh
+# Limpiar cualquier formato de fin de línea Windows o BOM y asignar permisos
+RUN sed -i -e '1s/^\xef\xbb\xbf//' -e 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 # Puerto expuesto por defecto
 EXPOSE 8000
 
 USER user
 
-CMD ["/app/start.sh"]
+CMD ["/bin/bash", "/app/start.sh"]
