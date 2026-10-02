@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
-from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, Numeric, Text, create_engine, func, select, text
+from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, Text, create_engine, func, select, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -79,7 +79,8 @@ def get_db():
 # =============================================================
 # 2. MODELOS SQLALCHEMY
 # =============================================================
-class Base(DeclarativeBase): pass
+class Base(DeclarativeBase):
+    metadata = MetaData(schema="agenda")
 
 class Paciente(Base):
     __tablename__ = "pacientes"
@@ -108,8 +109,8 @@ class Tratamiento(Base):
 class Cita(Base):
     __tablename__ = "citas"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    paciente_id = Column(PG_UUID(as_uuid=True), ForeignKey("pacientes.id"), nullable=False)
-    tratamiento_id = Column(PG_UUID(as_uuid=True), ForeignKey("tratamientos.id"), nullable=False)
+    paciente_id = Column(PG_UUID(as_uuid=True), ForeignKey("agenda.pacientes.id"), nullable=False)
+    tratamiento_id = Column(PG_UUID(as_uuid=True), ForeignKey("agenda.tratamientos.id"), nullable=False)
     inicio = Column(DateTime(timezone=True), nullable=False)
     fin = Column(DateTime(timezone=True), nullable=False)
     estado = Column(Text, default="pendiente")
@@ -142,7 +143,7 @@ class SyncOutbox(Base):
 class NotificacionEnviada(Base):
     __tablename__ = "notificaciones_enviadas"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    cita_id = Column(PG_UUID(as_uuid=True), ForeignKey("citas.id"), nullable=False)
+    cita_id = Column(PG_UUID(as_uuid=True), ForeignKey("agenda.citas.id"), nullable=False)
     tipo = Column(Text, nullable=False)
     destino = Column(Text, nullable=False)
     estado = Column(Text, default="pendiente")
@@ -437,7 +438,7 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
         fin_calc = data.inicio + timedelta(minutes=duracion)
         validar_horario_soldent(data.inicio, fin_calc)
     
-    q = text("""UPDATE citas SET inicio = COALESCE(:inicio, inicio), tratamiento_id = COALESCE(:tratamiento_id, tratamiento_id), 
+    q = text("""UPDATE agenda.citas SET inicio = COALESCE(:inicio, inicio), tratamiento_id = COALESCE(:tratamiento_id, tratamiento_id), 
                 estado = COALESCE(:estado, estado), motivo = COALESCE(:motivo, motivo), notas = COALESCE(:notas, notas), 
                 version = version + 1, updated_at = now() 
                 WHERE id = :cid AND version = :version RETURNING version, fin""")
@@ -549,7 +550,7 @@ def responder_cita(token: str, accion: str, db: Session = Depends(get_db)):
     if cita.estado == "cancelada": return {"mensaje": "Esta cita ya fue cancelada previamente."}
     
     nuevo_estado = "confirmada" if accion == "confirmar" else "cancelada"
-    q = text("UPDATE citas SET estado=:estado, version=version+1, updated_at=now() WHERE id=:cid AND version=:v RETURNING version")
+    q = text("UPDATE agenda.citas SET estado=:estado, version=version+1, updated_at=now() WHERE id=:cid AND version=:v RETURNING version")
     row = db.execute(q, {"estado": nuevo_estado, "cid": cita.id, "v": cita.version}).mappings().first()
     if row is None:
         db.rollback(); raise HTTPException(409, "La cita cambió mientras respondías.")
@@ -583,7 +584,7 @@ async def webhook_google(req: Request, db: Session = Depends(get_db)):
             fin_str = evento["end"].get("dateTime", evento["end"].get("date")).replace("Z", "+00:00")
             cancelado = evento.get("status") == "cancelled"
             
-            q = text("UPDATE citas SET inicio=:i, fin=:f, estado=:e, version=version+1, updated_at=now() WHERE id=:cid AND version=:v RETURNING version")
+            q = text("UPDATE agenda.citas SET inicio=:i, fin=:f, estado=:e, version=version+1, updated_at=now() WHERE id=:cid AND version=:v RETURNING version")
             row = db.execute(q, {"i": inicio_str, "f": fin_str, "e": "cancelada" if cancelado else cita.estado, "cid": cita.id, "v": cita.version}).mappings().first()
             if row:
                 registrar_auditoria(db, cita.id, "sistema", "sync_google", antes={"inicio": str(cita.inicio)}, despues={"inicio": inicio_str})
@@ -606,7 +607,7 @@ def worker_sync_outbox(db: Session):
             
             if outbox.accion == "create":
                 res = service.events().insert(calendarId=settings.CALENDAR_ID, body=event_body).execute()
-                db.execute(text("UPDATE citas SET google_event_id=:gid WHERE id=:cid"), {"gid": res["id"], "cid": outbox.entidad_id})
+                db.execute(text("UPDATE agenda.citas SET google_event_id=:gid WHERE id=:cid"), {"gid": res["id"], "cid": outbox.entidad_id})
                 outbox.estado, outbox.procesado_en = "completado", ahora
             elif outbox.accion == "update" and event_id:
                 service.events().update(calendarId=settings.CALENDAR_ID, eventId=event_id, body=event_body).execute()
