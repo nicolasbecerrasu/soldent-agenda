@@ -371,8 +371,20 @@ def crear_cita(data: CitaIn, db: Session = Depends(get_db)):
     trat = db.get(Tratamiento, data.tratamiento_id)
     if not trat: raise HTTPException(404, "Tratamiento no encontrado")
     fin = data.inicio + timedelta(minutes=trat.duracion_min)
-    validar_horario_soldent(data.inicio, fin)
-    paciente = db.get(Paciente, data.paciente_id)
+    # 2. Validación estricta anti-traslapes por consultorio/médico (Dra. Pamela Pinto Suárez)
+    solapada = db.execute(
+        select(Cita)
+        .where(
+            Cita.estado.notin_(["cancelada", "no_asistio"]),
+            Cita.inicio < fin,
+            Cita.fin > data.inicio
+        )
+    ).scalars().first()
+    if solapada:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El horario solicitado ya se encuentra ocupado por otra cita en el consultorio."
+        )
 
     ahora_utc = datetime.now(timezone.utc)
     inicio_utc = data.inicio.astimezone(timezone.utc) if data.inicio.tzinfo else data.inicio.replace(tzinfo=timezone.utc)
@@ -449,6 +461,18 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
         duracion = trat.duracion_min if trat else 30
         fin_calc = data.inicio + timedelta(minutes=duracion)
         validar_horario_soldent(data.inicio, fin_calc)
+
+        solapada = db.execute(
+            select(Cita)
+            .where(
+                Cita.id != cid,
+                Cita.estado.notin_(["cancelada", "no_asistio"]),
+                Cita.inicio < fin_calc,
+                Cita.fin > data.inicio
+            )
+        ).scalars().first()
+        if solapada:
+            raise HTTPException(409, "El nuevo horario se traslapa con otra cita activa en el consultorio")
     
     q = text("""UPDATE agenda.citas SET inicio = COALESCE(:inicio, inicio), tratamiento_id = COALESCE(:tratamiento_id, tratamiento_id), 
                 estado = COALESCE(:estado, estado), motivo = COALESCE(:motivo, motivo), notas = COALESCE(:notas, notas), 
