@@ -1,23 +1,41 @@
 import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload } from '../types';
 
-const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || `http://${host}:8000/api`;
+// En desarrollo local con Vite (puerto 5173 o 3000) apunta a http://host:8000/api
+// En producción (Render / Cloud) FastAPI y el Frontend están en el mismo origen, por lo que usa la ruta relativa '/api'
+const isLocalDev = typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '3000');
+const defaultBase = isLocalDev ? `http://${window.location.hostname}:8000/api` : '/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || defaultBase).replace(/\/$/, '');
+
+function getFullUrl(path: string, params?: Record<string, string | undefined>): string {
+  const base = API_BASE.startsWith('http')
+    ? API_BASE
+    : `${typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8000'}${API_BASE.startsWith('/') ? '' : '/'}${API_BASE}`;
+  
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = new URL(`${base}${cleanPath}`);
+  
+  if (params) {
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        url.searchParams.set(key, val);
+      }
+    });
+  }
+  return url.toString();
+}
 
 export const api = {
   // CITAS
   async getCitas(params?: { desde?: string; hasta?: string; estado?: string }): Promise<Cita[]> {
-    const url = new URL(`${API_BASE}/citas`);
-    if (params?.desde) url.searchParams.set('desde', params.desde);
-    if (params?.hasta) url.searchParams.set('hasta', params.hasta);
-    if (params?.estado) url.searchParams.set('estado', params.estado);
-
-    const res = await fetch(url.toString());
+    const url = getFullUrl('/citas', params);
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Error al obtener citas: ${res.statusText}`);
     return res.json();
   },
 
   async crearCita(payload: CrearCitaPayload): Promise<{ id: string; fin: string; estado: string; version: number; link_respuesta: string }> {
-    const res = await fetch(`${API_BASE}/citas`, {
+    const url = getFullUrl('/citas');
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -30,7 +48,8 @@ export const api = {
   },
 
   async actualizarCita(id: string, payload: { version: number; estado?: string; inicio?: string; tratamiento_id?: string; notas?: string }): Promise<any> {
-    const res = await fetch(`${API_BASE}/citas/${id}`, {
+    const url = getFullUrl(`/citas/${id}`);
+    const res = await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -44,22 +63,23 @@ export const api = {
 
   // TRATAMIENTOS
   async getTratamientos(): Promise<Tratamiento[]> {
-    const res = await fetch(`${API_BASE}/tratamientos`);
+    const url = getFullUrl('/tratamientos');
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Error al obtener tratamientos: ${res.statusText}`);
     return res.json();
   },
 
   // PACIENTES
   async getPacientes(q: string = ''): Promise<Paciente[]> {
-    const url = new URL(`${API_BASE}/pacientes`);
-    if (q) url.searchParams.set('q', q);
-    const res = await fetch(url.toString());
+    const url = getFullUrl('/pacientes', q ? { q } : undefined);
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Error al buscar pacientes: ${res.statusText}`);
     return res.json();
   },
 
   async crearPaciente(payload: CrearPacientePayload): Promise<{ id: string }> {
-    const res = await fetch(`${API_BASE}/pacientes`, {
+    const url = getFullUrl('/pacientes');
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
