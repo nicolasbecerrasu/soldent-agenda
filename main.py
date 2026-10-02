@@ -542,7 +542,7 @@ def pagina_respuesta(token: str, db: Session = Depends(get_db)):
     
     detalle_html = (
         f"<p><b>Paciente:</b> {p.nombre} {p.apellidos or ''}</p>"
-        f"<p><b>Tratamiento:</b> {trat_nom}</p>"
+        f"<p><b>Servicio:</b> Consulta Odontológica</p>"
         f"<p><b>Fecha:</b> {f_fecha}</p>"
         f"<p><b>Hora:</b> {f_hora} (hora de Santa Cruz)</p>"
         f"<p><b>Especialista:</b> Dra. Pamela Pinto Suárez</p>"
@@ -660,12 +660,16 @@ def worker_recordatorios(db: Session):
         db.add(ya)
         try:
             db.flush()
+            tz_bol = ZoneInfo(settings.TZ_CONSULTORIO)
+            dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
+            hora_str = dt_bol.strftime("%H:%M")
             link = f"{settings.PUBLIC_BASE_URL}/r/{token}"
             mensaje = (
-                f"🦷 *SOLDENT - Recordatorio de Cita*\n\n"
-                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una cita odontológica en 3 horas con la *Dra. Pamela Pinto Suárez*.\n\n"
-                f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra\n\n"
-                f"👉 Por favor confirme o cancele su asistencia en este enlace:\n{link}\n\n"
+                f"🦷 *SOLDENT - Recordatorio de Cita*\n"
+                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta odontológica programada con la *Dra. Pamela Pinto Suárez* para las *{hora_str}*.\n\n"
+                f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.\n\n"
+                f"👉 Por favor confirme o cancele su asistencia en este enlace:\n"
+                f"{link}\n\n"
                 f"¡Le esperamos!"
             )
             try:

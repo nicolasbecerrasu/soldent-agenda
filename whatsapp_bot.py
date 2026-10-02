@@ -41,16 +41,16 @@ gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 sesiones_chat = {}
 mensajes_procesados_recientes = {}
 
-def crear_cita(nombre_paciente: str, telefono: str, tratamiento_nombre: str, fecha_hora_inicio: str) -> str:
-    """Registra una cita odontológica confirmada en la base de datos de Soldent y la encola para sincronizar con Google Calendar.
+def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str, tratamiento_nombre: str = "Consulta y Diagnóstico") -> str:
+    """Registra una consulta odontológica en la base de datos de Soldent y la encola para sincronizar con Google Calendar.
 
     Args:
         nombre_paciente: Nombre completo del paciente (ej: 'Nicolas Becerra').
         telefono: Número de teléfono o WhatsApp del paciente (ej: '+59170277520' o '70277520').
-        tratamiento_nombre: Nombre o tipo de tratamiento solicitado (ej: 'Consulta y Diagnóstico', 'Limpieza y Profilaxis', 'Curación / Resina', 'Extracción Simple', 'Endodoncia', 'Blanqueamiento Dental').
         fecha_hora_inicio: Fecha y hora de inicio de la cita en formato ISO (YYYY-MM-DDTHH:MM:SS) en hora de Bolivia (America/La_Paz, UTC-4).
+        tratamiento_nombre: Por defecto 'Consulta y Diagnóstico'. Todas las atenciones se estandarizan como Consulta Odontológica.
     """
-    safe_print(f"\n[TOOL CALL: crear_cita] Paciente: {nombre_paciente} | Tel: {telefono} | Tratamiento: {tratamiento_nombre} | Inicio: {fecha_hora_inicio}")
+    safe_print(f"\n[TOOL CALL: crear_cita] Paciente: {nombre_paciente} | Tel: {telefono} | Inicio: {fecha_hora_inicio}")
 
     tel_clean = telefono.strip()
     if not tel_clean.startswith("+"):
@@ -86,30 +86,22 @@ def crear_cita(nombre_paciente: str, telefono: str, tratamiento_nombre: str, fec
     if not paciente_id:
         return "ERROR: No se pudo registrar ni asociar al paciente en el sistema."
 
-    # 2. Consultar tratamientos en el backend y hacer coincidencia
+    # 2. Consultar tratamientos en el backend y asignar Consulta y Diagnóstico por defecto
     tratamiento_id = None
-    trat_oficial = "Consulta y Diagnóstico"
     duracion_min = 30
-    precio = 100.0
     try:
         r_trat = httpx.get(f"{API_BACKEND_URL}/api/tratamientos", timeout=6.0)
         if r_trat.status_code == 200:
             trats = r_trat.json()
-            q_norm = tratamiento_nombre.lower()
             for t in trats:
-                t_nom = t["nombre"].lower()
-                # Coincidencia por palabra clave relevante
-                if any(w in t_nom for w in q_norm.split() if len(w) > 3):
+                t_nom = t.get("nombre", "").lower()
+                if "consulta" in t_nom or "diagn" in t_nom:
                     tratamiento_id = t["id"]
-                    trat_oficial = t["nombre"]
                     duracion_min = t.get("duracion_min", 30)
-                    precio = t.get("precio", 100.0)
                     break
             if not tratamiento_id and trats:
                 tratamiento_id = trats[0]["id"]
-                trat_oficial = trats[0]["nombre"]
                 duracion_min = trats[0].get("duracion_min", 30)
-                precio = trats[0].get("precio", 100.0)
     except Exception as e:
         safe_print(f"[Tool Error Tratamiento]: {e}")
 
@@ -188,7 +180,7 @@ def crear_cita(nombre_paciente: str, telefono: str, tratamiento_nombre: str, fec
             "paciente_id": paciente_id,
             "tratamiento_id": tratamiento_id,
             "inicio": inicio_iso,
-            "motivo": f"Agendado via WhatsApp Bot - {trat_oficial}",
+            "motivo": "Agendado via WhatsApp Bot - Consulta Odontológica",
             "notas": f"Tel: {tel_clean}"
         }, timeout=8.0)
 
@@ -198,22 +190,18 @@ def crear_cita(nombre_paciente: str, telefono: str, tratamiento_nombre: str, fec
             data = r_cita.json()
             cid = data.get("id")
             es_inmediata = data.get("es_inmediata", False)
-            f_fecha = dt.strftime("%d/%m/%Y")
+            dias_esp = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            f_dia = dias_esp[dt.weekday()] + " " + dt.strftime("%d/%m")
             f_hora = dt.strftime("%H:%M")
-            safe_print(f"✅ [Tool Éxito] Cita creada con ID {cid} para {f_fecha} {f_hora} (Inmediata: {es_inmediata})")
+            safe_print(f"✅ [Tool Éxito] Cita creada con ID {cid} para {f_dia} a las {f_hora} (Inmediata: {es_inmediata})")
             if es_inmediata:
                 return (
-                    f"CITA_INMEDIATA_CONFIRMADA_201: Cita registrada y CONFIRMADA DE INMEDIATO (inicia en menos de 3 horas). "
-                    f"Paciente: {nombre_paciente}. Fecha: {f_fecha}. Hora: {f_hora}. "
-                    f"Tratamiento: {trat_oficial} (Costo: Bs. {precio}, duración: {duracion_min} minutos). "
-                    f"Especialista: Dra. Pamela Pinto Suárez. Ubicación: Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra. "
-                    f"El espacio ya está 100% reservado y sincronizado con el calendario del consultorio. Pídele al paciente que asista directamente a la hora pactada."
+                    f"CITA_INMEDIATA_CONFIRMADA_201: Consulta odontológica agendada y confirmada de inmediato. "
+                    f"Paciente: {nombre_paciente}. Día: {f_dia}. Hora: {f_hora}."
                 )
             return (
-                f"CITA_CONFIRMADA_201: Cita registrada exitosamente en la base de datos de Soldent con ID {cid}. "
-                f"Paciente: {nombre_paciente}. Fecha: {f_fecha}. Hora: {f_hora}. "
-                f"Tratamiento: {trat_oficial} (Costo: Bs. {precio}, duración: {duracion_min} minutos). "
-                f"Especialista: Dra. Pamela Pinto Suárez. Ubicación: Calle Lemoine 407 esq. Vallegrande."
+                f"CITA_CONFIRMADA_201: Consulta odontológica agendada exitosamente. "
+                f"Paciente: {nombre_paciente}. Día: {f_dia}. Hora: {f_hora}."
             )
         elif r_cita.status_code == 409:
             safe_print("[Tool Conflicto] Horario ocupado en agenda")
@@ -258,13 +246,11 @@ HORARIOS OFICIALES DE ATENCIÓN EN SOLDENT (ESTRICTO):
 Teléfono de contacto de la clínica: +59178472875.
 Teléfono WhatsApp detectado del paciente: {telefono_paciente} (usa este teléfono automáticamente si el paciente no indica otro diferente).
 
-Catálogo Oficial de Tratamientos y Precios en Soldent:
-1. Consulta y Diagnóstico: 30 minutos | Bs. 100
-2. Limpieza y Profilaxis: 45 minutos | Bs. 150
-3. Curación / Resina: 45 minutos | Bs. 180
-4. Extracción Simple: 45 minutos | Bs. 200
-5. Endodoncia (Tratamiento de Conducto): 90 minutos | Bs. 600
-6. Blanqueamiento Dental: 60 minutos | Bs. 500
+POLÍTICA DE SERVICIOS Y PRECIOS (ESTRICTO):
+- Todas las atenciones se estandarizan como "Consulta Odontológica" (o "su consulta"). No menciones nombres de tratamientos específicos (como limpieza, resina, endodoncia, etc.) al agendar o confirmar.
+- ESTÁ TOTALMENTE PROHIBIDO DAR COTIZACIONES O LISTAS DE PRECIOS POR WHATSAPP.
+- Si el paciente pregunta por costos de tratamientos complejos (resinas, endodoncias, extracciones, etc.), debes responder cordialmente que el presupuesto exacto se define de forma personalizada tras la evaluación en la consulta presencial con la Dra. Pamela Pinto Suárez.
+- Al invocar la herramienta interna `crear_cita`, asigna por defecto el identificador de tratamiento correspondiente a 'Consulta y Diagnóstico'.
 
 Tu personalidad:
 - Eres cálido, empático, educado y con un trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos...").
@@ -276,17 +262,24 @@ REGLAS DE AGENDAMIENTO Y HORARIOS (MUY IMPORTANTE):
   * Sáb: 09:00 a 12:00.
 - Si el paciente solicita un horario en el receso del mediodía (12:00 a 15:30), explícale cordialmente que el consultorio tiene receso al mediodía y ofrécele amablemente opciones en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30).
 - Si el paciente pide sábado por la tarde o domingo, indícale amablemente que en esos momentos nos encontramos cerrados y sugiérele el sábado por la mañana o un día entre semana.
-- Para agendar necesitas saber:
+- Para agendar únicamente necesitas saber:
   1. Nombre completo del paciente.
-  2. Tratamiento que solicita.
-  3. Día y horario deseado dentro de los turnos oficiales permitidos. Si dice "hoy" usa la fecha de hoy ({fecha_actual_iso}); si dice "mañana", calcula el día siguiente.
-- En cuanto el paciente proporcione o confirme estos datos, DEBES INVOCAR INMEDIATAMENTE la función `crear_cita`.
-- NUNCA inventes que una cita ha sido reservada o confirmada sin que la función `crear_cita` haya sido ejecutada y haya retornado `CITA_CONFIRMADA_201`.
-- Si la función retorna `CITA_CONFIRMADA_201`, confírmale al paciente con entusiasmo detallando fecha, hora, tratamiento, costo y la dirección en Calle Lemoine 407 esq. Vallegrande.
-- Si la función retorna `CITA_INMEDIATA_CONFIRMADA_201`, la cita inicia en menos de 3 horas: confírmale al paciente con total seguridad y calidez que su espacio ha quedado 100% reservado y CONFIRMADO DE INMEDIATO con la Dra. Pamela Pinto Suárez para dentro de poco tiempo, detallando hora exacta y dirección.
+  2. Día y horario deseado dentro de los turnos oficiales permitidos. Si dice "hoy" usa la fecha de hoy ({fecha_actual_iso}); si dice "mañana", calcula el día siguiente.
+- En cuanto el paciente proporcione estos datos, DEBES INVOCAR INMEDIATAMENTE la función `crear_cita`.
+- NUNCA inventes que una cita ha sido reservada o confirmada sin que la función `crear_cita` haya sido ejecutada y haya retornado `CITA_CONFIRMADA_201` o `CITA_INMEDIATA_CONFIRMADA_201`.
+- Si la función retorna `CITA_CONFIRMADA_201` o `CITA_INMEDIATA_CONFIRMADA_201`, responde EXACTAMENTE siguiendo este formato cordial y profesional (sin mencionar precios ni tratamientos específicos):
+
+¡Perfecto, [Nombre]! 🦷✨
+Su consulta odontológica ha quedado agendada y registrada en nuestro sistema con la Dra. Pamela Pinto Suárez para el [Día] a las [Hora].
+
+Le esperamos en nuestro consultorio ubicado en la Calle Lemoine 407, esquina Vallegrande.
+
+Si tuviera alguna duda o inconveniente, puede escribirnos por aquí o llamar al +591 78472875.
+¡Que tenga un excelente día!
+
 - Si la función retorna `ERROR_HORARIO_OCUPADO`, explícaselo con amabilidad y sugiérele otros horarios cercanos disponibles dentro de los turnos permitidos.
 - Si la función retorna `ERROR_RECESO_MEDIODIA`, `ERROR_SABADO_TARDE_CERRADO`, `ERROR_DOMINGO_CERRADO` o `ERROR_HORARIO_NO_PERMITIDO`, explícale amablemente la restricción de horario y recomiéndale las opciones válidas.
-- Si la función retorna `AVISO_CITA_EXISTENTE`, explícaselo cordialmente indicando que ya tiene su cita agendada y confirmada para ese mismo día en la clínica, y recuérdale su horario y dirección sin crear un nuevo turno duplicado.
+- Si la función retorna `AVISO_CITA_EXISTENTE`, explícaselo cordialmente indicando que ya tiene su consulta agendada y confirmada para ese mismo día en la clínica, y recuérdale su horario y dirección sin crear un nuevo turno duplicado.
 """
 
 def obtener_o_crear_chat(remitente: str, tel_paciente: str):
