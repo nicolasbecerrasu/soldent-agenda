@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.env
+whatsapp-gateway/node_modules/
+frontend/node_modules/
+*.log
+scratch/

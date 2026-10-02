@@ -1,0 +1,35 @@
+# Entorno virtual y dependencias
+venv/
+.venv/
+env/
+node_modules/
+whatsapp-gateway/node_modules/
+frontend/node_modules/
+
+# Archivos de entorno y credenciales sensibles
+.env
+.env.local
+.env.*.local
+credentials.json
+
+# Sesión local de WhatsApp (se gestiona mediante QR o Persistent Storage)
+auth_info_baileys/
+whatsapp-gateway/auth_info_baileys/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Logs y temporales
+*.log
+scratch/
+.system_generated/
+whatsapp-qr.png
+whatsapp-qr.html
+
+# IDEs
+.vscode/
+.idea/
+*.swp

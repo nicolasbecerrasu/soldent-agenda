@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: soldent-agenda
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/salud
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER
+        value: "+59162422577"

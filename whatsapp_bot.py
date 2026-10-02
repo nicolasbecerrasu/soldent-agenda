@@ -1,0 +1,428 @@
+import asyncio, os, sys
+from datetime import datetime, timezone, timedelta, time
+from zoneinfo import ZoneInfo
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+import uvicorn
+from google import genai
+from google.genai import types
+from main import SessionLocal, worker_sync_outbox, worker_recordatorios
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+def safe_print(msg: str):
+    try:
+        print(msg)
+    except Exception:
+        try:
+            print(msg.encode("ascii", errors="replace").decode("ascii"))
+        except Exception:
+            pass
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
+DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "+591")
+CLINICA_DIRECCION = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra, Bolivia")
+DOCTORA_NOMBRE = os.getenv("DOCTORA_NOMBRE", "Dra. Pamela Pinto Suárez")
+API_BACKEND_URL = os.getenv("API_BACKEND_URL", "http://127.0.0.1:8000")
+
+# Inicializar cliente Gemini oficial
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+# Diccionario de sesiones de chat activas por remitente
+sesiones_chat = {}
+mensajes_procesados_recientes = {}
+
+def crear_cita(nombre_paciente: str, telefono: str, tratamiento_nombre: str, fecha_hora_inicio: str) -> str:
+    """Registra una cita odontológica confirmada en la base de datos de Soldent y la encola para sincronizar con Google Calendar.
+
+    Args:
+        nombre_paciente: Nombre completo del paciente (ej: 'Nicolas Becerra').
+        telefono: Número de teléfono o WhatsApp del paciente (ej: '+59170277520' o '70277520').
+        tratamiento_nombre: Nombre o tipo de tratamiento solicitado (ej: 'Consulta y Diagnóstico', 'Limpieza y Profilaxis', 'Curación / Resina', 'Extracción Simple', 'Endodoncia', 'Blanqueamiento Dental').
+        fecha_hora_inicio: Fecha y hora de inicio de la cita en formato ISO (YYYY-MM-DDTHH:MM:SS) en hora de Bolivia (America/La_Paz, UTC-4).
+    """
+    safe_print(f"\n[TOOL CALL: crear_cita] Paciente: {nombre_paciente} | Tel: {telefono} | Tratamiento: {tratamiento_nombre} | Inicio: {fecha_hora_inicio}")
+
+    tel_clean = telefono.strip()
+    if not tel_clean.startswith("+"):
+        tel_clean = "+" + tel_clean
+
+    # 1. Crear o asociar paciente en el backend
+    paciente_id = None
+    try:
+        r_pac = httpx.post(f"{API_BACKEND_URL}/api/pacientes", json={
+            "nombre": nombre_paciente.strip(),
+            "telefono": tel_clean
+        }, timeout=6.0)
+
+        if r_pac.status_code == 201:
+            paciente_id = r_pac.json().get("id")
+            safe_print(f"[Tool] Paciente nuevo creado: {paciente_id}")
+        else:
+            # Si ya existe (409), buscarlo por los últimos dígitos de su teléfono o por nombre
+            digitos = "".join(c for c in tel_clean if c.isdigit())[-8:]
+            sr = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={digitos}", timeout=6.0)
+            if sr.status_code == 200 and sr.json():
+                paciente_id = sr.json()[0].get("id")
+                safe_print(f"[Tool] Paciente existente encontrado por teléfono: {paciente_id}")
+            else:
+                primer_nombre = nombre_paciente.split()[0]
+                sr2 = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={primer_nombre}", timeout=6.0)
+                if sr2.status_code == 200 and sr2.json():
+                    paciente_id = sr2.json()[0].get("id")
+                    safe_print(f"[Tool] Paciente existente encontrado por nombre: {paciente_id}")
+    except Exception as e:
+        safe_print(f"[Tool Error Paciente]: {e}")
+
+    if not paciente_id:
+        return "ERROR: No se pudo registrar ni asociar al paciente en el sistema."
+
+    # 2. Consultar tratamientos en el backend y hacer coincidencia
+    tratamiento_id = None
+    trat_oficial = "Consulta y Diagnóstico"
+    duracion_min = 30
+    precio = 100.0
+    try:
+        r_trat = httpx.get(f"{API_BACKEND_URL}/api/tratamientos", timeout=6.0)
+        if r_trat.status_code == 200:
+            trats = r_trat.json()
+            q_norm = tratamiento_nombre.lower()
+            for t in trats:
+                t_nom = t["nombre"].lower()
+                # Coincidencia por palabra clave relevante
+                if any(w in t_nom for w in q_norm.split() if len(w) > 3):
+                    tratamiento_id = t["id"]
+                    trat_oficial = t["nombre"]
+                    duracion_min = t.get("duracion_min", 30)
+                    precio = t.get("precio", 100.0)
+                    break
+            if not tratamiento_id and trats:
+                tratamiento_id = trats[0]["id"]
+                trat_oficial = trats[0]["nombre"]
+                duracion_min = trats[0].get("duracion_min", 30)
+                precio = trats[0].get("precio", 100.0)
+    except Exception as e:
+        safe_print(f"[Tool Error Tratamiento]: {e}")
+
+    # 3. Formatear y validar fecha y hora en zona horaria America/La_Paz (-04:00)
+    tz_bolivia = ZoneInfo("America/La_Paz")
+    f_str = fecha_hora_inicio.strip().replace(" ", "T")
+    try:
+        dt = datetime.fromisoformat(f_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz_bolivia)
+        inicio_iso = dt.isoformat()
+    except Exception:
+        dt = datetime.now(tz_bolivia)
+        inicio_iso = dt.isoformat()
+
+    fecha_solicitada = dt.date()
+
+    # 3.0. Validación de Horarios Oficiales de Soldent
+    # Lunes a Viernes: 09:00 a 12:00 | 15:30 a 19:30 (Receso 12:00 a 15:30)
+    # Sábados: 09:00 a 12:00 (Tardes y domingos cerrado)
+    weekday = dt.weekday()
+    t_ini = dt.time()
+    dt_fin = dt + timedelta(minutes=duracion_min)
+    t_fin = dt_fin.time()
+
+    t_0900 = time(9, 0)
+    t_1200 = time(12, 0)
+    t_1530 = time(15, 30)
+    t_1930 = time(19, 30)
+
+    if weekday == 6:
+        safe_print(f"⚠️ [Tool Validación] Intento de agendar en Domingo: {dt}")
+        return "ERROR_DOMINGO_CERRADO: Los domingos la clínica Soldent permanece cerrada todo el día. Por favor ofrece al paciente un horario de Lunes a Viernes (09:00 a 12:00 o 15:30 a 19:30) o Sábado (09:00 a 12:00)."
+
+    if weekday == 5:  # Sábado
+        if not (t_ini >= t_0900 and t_fin <= t_1200):
+            safe_print(f"⚠️ [Tool Validación] Intento de agendar fuera de horario sábado: {dt}")
+            return "ERROR_SABADO_TARDE_CERRADO: Los sábados la clínica atiende únicamente en el turno de la mañana de 09:00 a 12:00 (las tardes de sábado y domingos estamos cerrados). Ofrece al paciente agendar en la mañana del sábado o de Lunes a Viernes."
+    else:  # Lunes a Viernes
+        en_manana = (t_ini >= t_0900 and t_fin <= t_1200)
+        en_tarde = (t_ini >= t_1530 and t_fin <= t_1930)
+        if not (en_manana or en_tarde):
+            safe_print(f"⚠️ [Tool Validación] Intento de agendar fuera de turnos Lun-Vie: {dt}")
+            if t_ini >= t_1200 and t_ini < t_1530:
+                return "ERROR_RECESO_MEDIODIA: El horario solicitado cae en el intervalo de receso del mediodía (12:00 a 15:30). La clínica no atiende al mediodía. Por favor ofrece al paciente turnos en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30)."
+            return "ERROR_HORARIO_NO_PERMITIDO: El horario solicitado está fuera de nuestro horario oficial de atención. Atendemos de Lunes a Viernes de 09:00 a 12:00 y de 15:30 a 19:30, y Sábados de 09:00 a 12:00. Ofrece amablemente un turno válido dentro de estos rangos."
+
+    # 3.1. Validación antiduplicados: verificar si el paciente ya tiene cita activa para el mismo día
+    try:
+        r_citas_existentes = httpx.get(f"{API_BACKEND_URL}/api/citas", timeout=6.0)
+        if r_citas_existentes.status_code == 200:
+            citas_data = r_citas_existentes.json()
+            for c in citas_data:
+                p_c_id = c.get("paciente_id") or (c.get("paciente") or {}).get("id")
+                c_estado = (c.get("estado") or "").lower()
+                if str(p_c_id) == str(paciente_id) and c_estado in ("pendiente", "confirmada"):
+                    c_inicio_str = c.get("inicio", "")
+                    if c_inicio_str:
+                        c_dt = datetime.fromisoformat(c_inicio_str.replace("Z", "+00:00"))
+                        c_dt_bolivia = c_dt.astimezone(tz_bolivia)
+                        if c_dt_bolivia.date() == fecha_solicitada:
+                            c_hora_existente = c_dt_bolivia.strftime("%H:%M")
+                            c_fecha_existente = c_dt_bolivia.strftime("%d/%m/%Y")
+                            safe_print(f"⚠️ [Tool Validación] Cita duplicada evitada: {nombre_paciente} ya tiene cita el {c_fecha_existente} a las {c_hora_existente}")
+                            return (
+                                f"AVISO_CITA_EXISTENTE: El paciente {nombre_paciente} ya cuenta con una cita activa agendada para el día {c_fecha_existente} "
+                                f"a las {c_hora_existente}. No se ha creado un nuevo turno para evitar duplicados. "
+                                f"Por favor recuérdale amablemente que su cita de las {c_hora_existente} ya está confirmada y registrada en el sistema de la clínica Soldent."
+                            )
+    except Exception as e:
+        safe_print(f"[Tool Advertencia Validación Citas]: {e}")
+
+    # 4. Registrar la cita vía POST /api/citas
+    try:
+        r_cita = httpx.post(f"{API_BACKEND_URL}/api/citas", json={
+            "paciente_id": paciente_id,
+            "tratamiento_id": tratamiento_id,
+            "inicio": inicio_iso,
+            "motivo": f"Agendado via WhatsApp Bot - {trat_oficial}",
+            "notas": f"Tel: {tel_clean}"
+        }, timeout=8.0)
+
+        safe_print(f"[Tool] Respuesta POST /api/citas: {r_cita.status_code}")
+
+        if r_cita.status_code == 201:
+            data = r_cita.json()
+            cid = data.get("id")
+            es_inmediata = data.get("es_inmediata", False)
+            f_fecha = dt.strftime("%d/%m/%Y")
+            f_hora = dt.strftime("%H:%M")
+            safe_print(f"✅ [Tool Éxito] Cita creada con ID {cid} para {f_fecha} {f_hora} (Inmediata: {es_inmediata})")
+            if es_inmediata:
+                return (
+                    f"CITA_INMEDIATA_CONFIRMADA_201: Cita registrada y CONFIRMADA DE INMEDIATO (inicia en menos de 3 horas). "
+                    f"Paciente: {nombre_paciente}. Fecha: {f_fecha}. Hora: {f_hora}. "
+                    f"Tratamiento: {trat_oficial} (Costo: Bs. {precio}, duración: {duracion_min} minutos). "
+                    f"Especialista: Dra. Pamela Pinto Suárez. Ubicación: Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra. "
+                    f"El espacio ya está 100% reservado y sincronizado con el calendario del consultorio. Pídele al paciente que asista directamente a la hora pactada."
+                )
+            return (
+                f"CITA_CONFIRMADA_201: Cita registrada exitosamente en la base de datos de Soldent con ID {cid}. "
+                f"Paciente: {nombre_paciente}. Fecha: {f_fecha}. Hora: {f_hora}. "
+                f"Tratamiento: {trat_oficial} (Costo: Bs. {precio}, duración: {duracion_min} minutos). "
+                f"Especialista: Dra. Pamela Pinto Suárez. Ubicación: Calle Lemoine 407 esq. Vallegrande."
+            )
+        elif r_cita.status_code == 409:
+            safe_print("[Tool Conflicto] Horario ocupado en agenda")
+            return "ERROR_HORARIO_OCUPADO: Ese horario ya está ocupado por otra cita en la agenda de la clínica. Ofrece amablemente al paciente otro horario disponible (por ejemplo 30 o 60 minutos antes o después)."
+        else:
+            safe_print(f"[Tool Error API]: {r_cita.status_code} - {r_cita.text}")
+            return f"ERROR_REGISTRO: El backend retornó código {r_cita.status_code}: {r_cita.text}"
+
+    except Exception as e:
+        safe_print(f"[Tool Excepción]: {e}")
+        return f"ERROR_CONEXION: No se pudo conectar con el servidor de la agenda ({e})."
+
+def construir_instrucciones_sistema(telefono_paciente: str) -> str:
+    tz_bolivia = ZoneInfo("America/La_Paz")
+    ahora = datetime.now(tz_bolivia)
+    
+    dias = {"Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles", "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo"}
+    meses = {"January": "Enero", "February": "Febrero", "March": "Marzo", "April": "Abril", "May": "Mayo", "June": "Junio", "July": "Julio", "August": "Agosto", "September": "Septiembre", "October": "Octubre", "November": "Noviembre", "December": "Diciembre"}
+    dia_nombre = dias.get(ahora.strftime("%A"), ahora.strftime("%A"))
+    mes_nombre = meses.get(ahora.strftime("%B"), ahora.strftime("%B"))
+    
+    fecha_actual_legible = f"{dia_nombre} {ahora.day} de {mes_nombre} de {ahora.year}, hora actual: {ahora.strftime('%H:%M')} (hora local de Bolivia, UTC-4)"
+    fecha_actual_iso = ahora.strftime("%Y-%m-%d")
+
+    return f"""
+Eres el asistente virtual oficial de WhatsApp de 'SOLDENT - Clínica Odontológica', ubicada en {CLINICA_DIRECCION}.
+La especialista a cargo es la {DOCTORA_NOMBRE} (Especialista en Odontología Integral & Ortodoncia).
+
+FECHA Y HORA ACTUAL: {fecha_actual_legible}.
+Año actual: {ahora.year}. Fecha de hoy para cálculo de citas: {fecha_actual_iso}.
+
+HORARIOS OFICIALES DE ATENCIÓN EN SOLDENT (ESTRICTO):
+* Lunes a Viernes:
+  - Turno Mañana: 09:00 a 12:00
+  - Receso de Mediodía (CERRADO): 12:00 a 15:30 (NO atender ni ofrecer turnos en este intervalo)
+  - Turno Tarde: 15:30 a 19:30
+* Sábados:
+  - Turno Mañana: 09:00 a 12:00
+  - Sábados por la Tarde: CERRADO (NO agendar)
+* Domingos: CERRADO todo el día (NO agendar)
+
+Teléfono de contacto de la clínica: +59178472875.
+Teléfono WhatsApp detectado del paciente: {telefono_paciente} (usa este teléfono automáticamente si el paciente no indica otro diferente).
+
+Catálogo Oficial de Tratamientos y Precios en Soldent:
+1. Consulta y Diagnóstico: 30 minutos | Bs. 100
+2. Limpieza y Profilaxis: 45 minutos | Bs. 150
+3. Curación / Resina: 45 minutos | Bs. 180
+4. Extracción Simple: 45 minutos | Bs. 200
+5. Endodoncia (Tratamiento de Conducto): 90 minutos | Bs. 600
+6. Blanqueamiento Dental: 60 minutos | Bs. 500
+
+Tu personalidad:
+- Eres cálido, empático, educado y con un trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos...").
+- Mantén las respuestas concisas y fáciles de leer en WhatsApp (usa negritas con asteriscos, emojis dentales con moderación).
+
+REGLAS DE AGENDAMIENTO Y HORARIOS (MUY IMPORTANTE):
+- El bot SOLO debe ofrecer y aceptar turnos dentro de los rangos oficiales permitidos:
+  * Lun - Vie: 09:00 a 12:00 y 15:30 a 19:30.
+  * Sáb: 09:00 a 12:00.
+- Si el paciente solicita un horario en el receso del mediodía (12:00 a 15:30), explícale cordialmente que el consultorio tiene receso al mediodía y ofrécele amablemente opciones en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30).
+- Si el paciente pide sábado por la tarde o domingo, indícale amablemente que en esos momentos nos encontramos cerrados y sugiérele el sábado por la mañana o un día entre semana.
+- Para agendar necesitas saber:
+  1. Nombre completo del paciente.
+  2. Tratamiento que solicita.
+  3. Día y horario deseado dentro de los turnos oficiales permitidos. Si dice "hoy" usa la fecha de hoy ({fecha_actual_iso}); si dice "mañana", calcula el día siguiente.
+- En cuanto el paciente proporcione o confirme estos datos, DEBES INVOCAR INMEDIATAMENTE la función `crear_cita`.
+- NUNCA inventes que una cita ha sido reservada o confirmada sin que la función `crear_cita` haya sido ejecutada y haya retornado `CITA_CONFIRMADA_201`.
+- Si la función retorna `CITA_CONFIRMADA_201`, confírmale al paciente con entusiasmo detallando fecha, hora, tratamiento, costo y la dirección en Calle Lemoine 407 esq. Vallegrande.
+- Si la función retorna `CITA_INMEDIATA_CONFIRMADA_201`, la cita inicia en menos de 3 horas: confírmale al paciente con total seguridad y calidez que su espacio ha quedado 100% reservado y CONFIRMADO DE INMEDIATO con la Dra. Pamela Pinto Suárez para dentro de poco tiempo, detallando hora exacta y dirección.
+- Si la función retorna `ERROR_HORARIO_OCUPADO`, explícaselo con amabilidad y sugiérele otros horarios cercanos disponibles dentro de los turnos permitidos.
+- Si la función retorna `ERROR_RECESO_MEDIODIA`, `ERROR_SABADO_TARDE_CERRADO`, `ERROR_DOMINGO_CERRADO` o `ERROR_HORARIO_NO_PERMITIDO`, explícale amablemente la restricción de horario y recomiéndale las opciones válidas.
+- Si la función retorna `AVISO_CITA_EXISTENTE`, explícaselo cordialmente indicando que ya tiene su cita agendada y confirmada para ese mismo día en la clínica, y recuérdale su horario y dirección sin crear un nuevo turno duplicado.
+"""
+
+def obtener_o_crear_chat(remitente: str, tel_paciente: str):
+    """Devuelve o crea la sesión de chat con Function Calling configurado"""
+    if remitente in sesiones_chat:
+        return sesiones_chat[remitente]
+
+    system_instruction = construir_instrucciones_sistema(tel_paciente)
+
+    chat = gemini_client.chats.create(
+        model="gemini-3.5-flash-lite",
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=[crear_cita],
+            temperature=0.3
+        )
+    )
+    sesiones_chat[remitente] = chat
+    return chat
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(loop_workers_automaticos())
+    yield
+    task.cancel()
+
+app = FastAPI(title="Soldent WhatsApp Bot", lifespan=lifespan)
+
+async def enviar_mensaje_whatsapp(numero: str, texto: str):
+    """Envía un mensaje de texto a través de la pasarela Baileys/Evolution"""
+    url = f"{EVOLUTION_API_URL}/send-message"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json={"number": numero, "text": texto})
+            if resp.status_code == 200:
+                safe_print(f"[Bot OUT] Enviado con éxito a {numero}")
+            else:
+                safe_print(f"[Bot OUT Error] {resp.status_code}: {resp.text}")
+    except Exception as e:
+        safe_print(f"[Bot OUT Error] No se pudo conectar con la pasarela WhatsApp: {e}")
+
+def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_paciente: str) -> str:
+    """Envía el turno del mensaje a Gemini con Function Calling activo"""
+    if not gemini_client:
+        return "Hola! Gracias por comunicarte con Soldent. En este momento estamos configurando el bot. Por favor contactanos al +59178472875."
+
+    chat = obtener_o_crear_chat(remitente, tel_paciente)
+
+    try:
+        # El paciente envía su mensaje en la conversación
+        prompt_mensaje = f"Paciente ({nombre}): {texto}"
+        resp = chat.send_message(prompt_mensaje)
+        if resp and resp.text:
+            return resp.text.strip()
+    except Exception as e:
+        safe_print(f"[Gemini Chat Error]: {e}. Reintentando con nueva sesión...")
+        try:
+            # Si la sesión falló (ej. timeout o token expirado), recrear sesión
+            sesiones_chat.pop(remitente, None)
+            nuevo_chat = obtener_o_crear_chat(remitente, tel_paciente)
+            resp = nuevo_chat.send_message(f"Paciente ({nombre}): {texto}")
+            if resp and resp.text:
+                return resp.text.strip()
+        except Exception as e2:
+            safe_print(f"[Gemini Chat Fallback Error]: {e2}")
+
+    return "¡Hola! Gracias por comunicarte con Soldent. En este momento tuvimos una pequeña demora técnica al procesar tu solicitud. Por favor escríbenos nuevamente o llámanos directamente al +59178472875."
+
+@app.post("/webhook")
+async def recibir_mensaje(req: Request):
+    try:
+        data = await req.json()
+    except Exception as err:
+        return {"ok": False, "error": f"JSON invalido: {err}"}
+
+    remitente = data.get("from")
+    nombre = data.get("name", "Paciente")
+    texto = data.get("text", "").strip()
+    tel_paciente = data.get("phone", "") or remitente.replace("@s.whatsapp.net", "").replace("@lid", "")
+
+    if not tel_paciente.startswith("+"):
+        tel_paciente = "+" + tel_paciente
+
+    if not remitente or not texto:
+        return {"ok": False}
+
+    # Descartar mensajes duplicados idénticos en una ventana de 15 segundos
+    global mensajes_procesados_recientes
+    ahora_ts = datetime.now().timestamp()
+    mensajes_procesados_recientes = {k: v for k, v in mensajes_procesados_recientes.items() if ahora_ts - v < 60}
+    clave_msg = (remitente, texto.lower())
+    if clave_msg in mensajes_procesados_recientes and (ahora_ts - mensajes_procesados_recientes[clave_msg]) < 15:
+        safe_print(f"[WhatsApp IN] Mensaje duplicado o reintento rápido ignorado (<15s): '{texto}'")
+        return {"ok": True, "duplicado": True}
+    mensajes_procesados_recientes[clave_msg] = ahora_ts
+
+    safe_print(f"\n[WhatsApp IN] De: {nombre} ({remitente} | {tel_paciente}): {texto}")
+
+    try:
+        # Procesar con Gemini y ejecutar Function Calling si corresponde
+        texto_respuesta = await asyncio.to_thread(
+            procesar_mensaje_con_gemini,
+            remitente, nombre, texto, tel_paciente
+        )
+
+        safe_print(f"[Gemini OUT]: {texto_respuesta}\n")
+
+        # Enviar respuesta al paciente por WhatsApp
+        await enviar_mensaje_whatsapp(remitente, texto_respuesta)
+        return {"ok": True, "respuesta": texto_respuesta}
+
+    except Exception as e:
+        safe_print(f"[Error Procesando Webhook]: {e}")
+        error_msg = "¡Hola! Tuvimos un pequeño inconveniente al procesar tu mensaje. Puedes escribirnos directamente o llamarnos al +59178472875."
+        await enviar_mensaje_whatsapp(remitente, error_msg)
+        return {"ok": False, "error": str(e)}
+
+async def loop_workers_automaticos():
+    """Ejecuta los workers cada 60 segundos para recordatorios de 1h y sincronizacion de Google Calendar"""
+    safe_print("[Workers] Iniciando ciclo automatico de recordatorios (cada 60 segundos)...")
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                # 1. Sincronizar citas pendientes con Google Calendar
+                worker_sync_outbox(db)
+                # 2. Enviar recordatorios automaticos de 1 hora
+                worker_recordatorios(db)
+            finally:
+                db.close()
+        except Exception as e:
+            safe_print(f"[Workers Error]: {e}")
+
+        await asyncio.sleep(60)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=5005)
