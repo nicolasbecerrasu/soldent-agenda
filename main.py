@@ -38,8 +38,20 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Normalizar URL para compatibilidad de driver PostgreSQL en SQLAlchemy 2.0
+# Normalizar URL para compatibilidad de driver PostgreSQL en SQLAlchemy 2.0 y soporte IPv4
 db_url = settings.DATABASE_URL
+
+# Auto-corrección para el host directo IPv6 de Supabase en nubes IPv4 (Render, etc.)
+if "db.uqaprhszthoginyptwrf.supabase.co" in db_url:
+    db_url = db_url.replace(
+        "db.uqaprhszthoginyptwrf.supabase.co",
+        "aws-0-us-west-2.pooler.supabase.com"
+    ).replace(
+        "postgres:",
+        "postgres.uqaprhszthoginyptwrf:",
+        1
+    )
+
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
 elif db_url.startswith("postgresql://") and "+" not in db_url.split("://")[0]:
