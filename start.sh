@@ -2,59 +2,72 @@
 set -e
 
 echo "=========================================================="
-echo "ðŸš€ INICIANDO SOLDENT - AGENDA ODONTOLÃ“GICA (CLOUD/DOCKER)"
+echo "🚀 INICIANDO SOLDENT - AGENDA ODONTOLÓGICA (CLOUD/DOCKER)"
 echo "=========================================================="
 
-APP_PORT="${PORT:-8000}"
+# 1. Determinar puerto de la aplicación (Render asigna $PORT, Hugging Face usa 7860)
+APP_PORT="${PORT:-7860}"
+export PORT="$APP_PORT"
 export API_BACKEND_URL="http://127.0.0.1:${APP_PORT}"
+export EVOLUTION_API_URL="http://127.0.0.1:8080"
 
-# 1. Configurar directorio persistente para Baileys
-if [ -d "/data" ]; then
-    echo "ðŸ“ Almacenamiento persistente detectado en /data"
+# 2. Configurar directorio para Baileys (persistencia de sesión WhatsApp)
+if [ -d "/data" ] && [ -w "/data" ]; then
+    echo "📁 Almacenamiento persistente detectado en /data"
     export AUTH_DIR="/data/auth_info_baileys"
-    mkdir -p "$AUTH_DIR"
 else
-    echo "ðŸ“ Usando almacenamiento local para Baileys"
+    echo "📁 Usando almacenamiento en /app/whatsapp-gateway/auth_info_baileys"
     export AUTH_DIR="/app/whatsapp-gateway/auth_info_baileys"
-    mkdir -p "$AUTH_DIR"
 fi
+mkdir -p "$AUTH_DIR" 2>/dev/null || true
 
-# 2. Configurar URL pÃºblica dinÃ¡mica segÃºn la plataforma (Render, Koyeb, Hugging Face)
+# 3. Detectar dominio público automáticamente si no está configurado
 if [ -z "$PUBLIC_BASE_URL" ] || [[ "$PUBLIC_BASE_URL" == *"192.168"* ]] || [[ "$PUBLIC_BASE_URL" == *"localhost"* ]]; then
     if [ -n "$RENDER_EXTERNAL_URL" ]; then
         export PUBLIC_BASE_URL="$RENDER_EXTERNAL_URL"
-        echo "ðŸŒ Render detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
-    elif [ -n "$KOYEB_PUBLIC_DOMAIN" ]; then
-        export PUBLIC_BASE_URL="https://$KOYEB_PUBLIC_DOMAIN"
-        echo "ðŸŒ Koyeb detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
+        echo "🌐 Render detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
     elif [ -n "$SPACE_HOST" ]; then
         export PUBLIC_BASE_URL="https://$SPACE_HOST"
-        echo "ðŸŒ Hugging Face detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
+        echo "🌐 Hugging Face Spaces detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
+    elif [ -n "$KOYEB_PUBLIC_DOMAIN" ]; then
+        export PUBLIC_BASE_URL="https://$KOYEB_PUBLIC_DOMAIN"
+        echo "🌐 Koyeb detectado: PUBLIC_BASE_URL=$PUBLIC_BASE_URL"
     fi
 fi
 
-# 3. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
-echo "ðŸ“± [1/4] Iniciando pasarela de WhatsApp Baileys..."
+echo "ℹ️  PUBLIC_BASE_URL configurada: ${PUBLIC_BASE_URL:-http://localhost:${APP_PORT}}"
+
+# 4. Manejador para terminación limpia de procesos
+cleanup() {
+    echo "🛑 Recibida señal de parada. Finalizando procesos en segundo plano..."
+    kill -TERM "$PID_GATEWAY" "$PID_BOT" "$PID_BACKEND" 2>/dev/null || true
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
+# 5. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
+echo "📱 [1/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
 cd /app/whatsapp-gateway
 node server.js &
+PID_GATEWAY=$!
 cd /app
 
-# Esperar 2 segundos para asegurar inicializaciÃ³n de la pasarela
+# Esperar 3 segundos para que Node.js inicie
+sleep 3
+
+# 6. Iniciar WhatsApp Bot con Gemini + Workers automáticos (puerto interno 5005)
+echo "🤖 [2/3] Iniciando WhatsApp Bot y ciclo de workers automáticos (puerto 5005)..."
+python whatsapp_bot.py &
+PID_BOT=$!
+
+# Esperar 2 segundos para que el bot inicie
 sleep 2
 
-# 4. Iniciar WhatsApp Bot con Google Gemini (puerto interno 5005)
-echo "ðŸ¤– [2/4] Iniciando WhatsApp Bot con Gemini..."
-python whatsapp_bot.py &
+# 7. Iniciar servidor principal FastAPI en el puerto de la nube ($APP_PORT)
+echo "🌐 [3/3] Iniciando Backend FastAPI en puerto $APP_PORT..."
+uvicorn main:app --host 0.0.0.0 --port "$APP_PORT" &
+PID_BACKEND=$!
 
-# 5. Iniciar Worker cÃ­clico para recordatorios y sincronizaciÃ³n con Google Calendar
-echo "â° [3/4] Iniciando ciclo de recordatorios y sincronizaciÃ³n..."
-(
-    while true; do
-        sleep 60
-        python run_workers.py || true
-    done
-) &
-
-# 6. Iniciar servidor principal FastAPI en el puerto dinÃ¡mico de la plataforma
-echo "ðŸŒ [4/4] Iniciando FastAPI en puerto $APP_PORT..."
-exec uvicorn main:app --host 0.0.0.0 --port "$APP_PORT"
+# Esperar activamente a los procesos
+wait -n "$PID_BACKEND" "$PID_BOT" "$PID_GATEWAY"
+cleanup

@@ -1,12 +1,12 @@
 # ========================================================
 # SOLDENT - AGENDA ODONTOLÓGICA & BOT WHATSAPP
-# Dockerfile optimizado para Despliegue en la Nube (Render / Koyeb / Docker)
+# Dockerfile optimizado para Despliegue en la Nube (Render / Hugging Face Spaces)
 # ========================================================
 FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=7860
 
 # Instalar Node.js 20, curl, librerías de PostgreSQL y compilación
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,8 +29,10 @@ ENV HOME=/home/user \
 
 WORKDIR /app
 
-# Crear carpeta de persistencia para Baileys
-RUN mkdir -p /data/auth_info_baileys && chown -R user:user /data /app
+# Crear carpetas de trabajo y persistencia con permisos amplios
+RUN mkdir -p /data/auth_info_baileys /app/whatsapp-gateway/auth_info_baileys && \
+    chown -R user:user /data /app && \
+    chmod -R 777 /data /app
 
 # Instalar dependencias Python
 COPY --chown=user:user requirements.txt .
@@ -47,8 +49,8 @@ COPY --chown=user:user . .
 # Limpiar cualquier formato de fin de línea Windows o BOM y asignar permisos
 RUN sed -i -e '1s/^\xef\xbb\xbf//' -e 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
-# Puerto expuesto por defecto
-EXPOSE 8000
+# Puertos expuestos: 7860 (Hugging Face Spaces), 8000 (Render default), 10000 (Render alternativo)
+EXPOSE 7860 8000 10000
 
 USER user
 
