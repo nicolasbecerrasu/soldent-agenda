@@ -21,7 +21,20 @@ let currentQRImage = null;
 let isConnected = false;
 let userJid = null;
 
-const defaultAuthDir = fs.existsSync('/data') ? '/data/auth_info_baileys' : path.join(__dirname, 'auth_info_baileys');
+let defaultAuthDir = path.join(__dirname, 'auth_info_baileys');
+try {
+  // Solo usar /data si tenemos permisos reales de escritura (ej. volumen Docker en la nube)
+  // En Android / Termux, /data existe en la raíz del sistema pero NO es escribible por el usuario
+  if (fs.existsSync('/data')) {
+    const testFile = '/data/.write_check_' + process.pid;
+    fs.writeFileSync(testFile, 'ok');
+    fs.unlinkSync(testFile);
+    defaultAuthDir = '/data/auth_info_baileys';
+  }
+} catch (e) {
+  defaultAuthDir = path.join(__dirname, 'auth_info_baileys');
+}
+
 const authPath = process.env.AUTH_DIR || defaultAuthDir;
 if (!fs.existsSync(authPath)) {
   try { fs.mkdirSync(authPath, { recursive: true }); } catch (e) {}
