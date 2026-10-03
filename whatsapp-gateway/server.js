@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
@@ -268,7 +268,12 @@ async function startBaileys() {
       auth: state,
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }),
-      browser: ['Soldent Bot', 'Chrome', '1.0.0']
+      browser: Browsers.ubuntu('Chrome'),
+      syncFullHistory: false,
+      defaultQueryTimeoutMs: 60000,
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 30000,
+      generateHighQualityLinkPreview: false
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -348,8 +353,6 @@ async function startBaileys() {
 
     // Handle incoming messages
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
-
       for (const msg of messages) {
         if (!msg.message || msg.key.fromMe) continue;
 
@@ -361,11 +364,11 @@ async function startBaileys() {
 
         if (!text.trim()) continue;
 
-        // Descartar mensajes viejos recibidos al reconectar o sincronizar historial (> 180 segundos)
+        // Descartar mensajes extremadamente antiguos (> 10 minutos)
         const msgTimestamp = Number(msg.messageTimestamp || 0);
         const nowSec = Math.floor(Date.now() / 1000);
-        if (msgTimestamp > 0 && (nowSec - msgTimestamp) > 180) {
-          console.log(`[WhatsApp IN] Descartando mensaje antiguo (${nowSec - msgTimestamp}s de antigüedad): "${text.slice(0, 35)}..."`);
+        if (msgTimestamp > 0 && (nowSec - msgTimestamp) > 600) {
+          console.log(`[WhatsApp IN] Descartando mensaje muy antiguo (${nowSec - msgTimestamp}s de antigüedad): "${text.slice(0, 35)}..."`);
           continue;
         }
 
