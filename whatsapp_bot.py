@@ -28,6 +28,7 @@ def safe_print(msg: str):
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+gemini_client = None  # Compatible con parches externos y llamadas ligeras
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "+591")
 CLINICA_DIRECCION = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra, Bolivia")
@@ -524,4 +525,4 @@ async def loop_workers_automaticos():
         await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=5005)
+    uvicorn.run(app, host="0.0.0.0", port=5005)
