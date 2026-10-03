@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 import uvicorn
 from google import genai
 from google.genai import types
-from main import SessionLocal, worker_sync_outbox, worker_recordatorios
+from main import SessionLocal, worker_sync_outbox, worker_recordatorios, worker_sync_inverso_google
 
 if sys.platform == "win32":
     try:
@@ -475,16 +475,22 @@ async def recibir_mensaje(req: Request):
         return {"ok": False, "error": str(e)}
 
 async def loop_workers_automaticos():
-    """Ejecuta los workers cada 60 segundos para recordatorios de 1h y sincronizacion de Google Calendar"""
-    safe_print("[Workers] Iniciando ciclo automatico de recordatorios (cada 60 segundos)...")
+    """Ejecuta los workers periódicamente para recordatorios de 1h, outbox y sincronización inversa de Google Calendar."""
+    safe_print("[Workers] Iniciando ciclo automático de recordatorios y sincronización con Google Calendar...")
+    ciclo = 0
     while True:
         try:
             db = SessionLocal()
             try:
-                # 1. Sincronizar citas pendientes con Google Calendar
+                # 1. Sincronizar citas pendientes locales hacia Google Calendar (Outbox)
                 worker_sync_outbox(db)
-                # 2. Enviar recordatorios automaticos de 1 hora
+                # 2. Enviar recordatorios automáticos de 1 hora
                 worker_recordatorios(db)
+                # 3. Sincronización Inversa (iPhone / Google Calendar -> Base de Datos)
+                # Se ejecuta cada 2 minutos (ciclo par)
+                if ciclo % 2 == 0:
+                    worker_sync_inverso_google(db)
+                ciclo += 1
             finally:
                 db.close()
         except Exception as e:

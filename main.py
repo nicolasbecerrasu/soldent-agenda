@@ -1,4 +1,4 @@
-import hashlib, uuid, asyncio, os
+import hashlib, uuid, asyncio, os, re
 from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, Text, create_engine, func, select, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.exc import IntegrityError
@@ -17,26 +16,44 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# =============================================================
-# 1. CONFIGURACIÓN
-# =============================================================
-class Settings(BaseSettings):
-    DATABASE_URL: str
-    TZ_CONSULTORIO: str = "America/La_Paz"
-    WHATSAPP_TOKEN: str = ""
-    WHATSAPP_PHONE_ID: str = ""
-    GOOGLE_REFRESH_TOKEN: str = ""
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    CALENDAR_ID: str = "primary"
-    PUBLIC_BASE_URL: str = "http://192.168.0.6:8000"
-    RECORDATORIO_MIN: int = 175
-    RECORDATORIO_MAX: int = 185
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
-settings = Settings()
+try:
+    from pydantic_settings import BaseSettings
+    class Settings(BaseSettings):
+        DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+        TZ_CONSULTORIO: str = os.getenv("TZ_CONSULTORIO", "America/La_Paz")
+        WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
+        WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
+        GOOGLE_REFRESH_TOKEN: str = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+        GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+        GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
+        PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+        RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
+        RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
+        class Config:
+            env_file = ".env"
+            extra = "ignore"
+    settings = Settings()
+except Exception:
+    class Settings:
+        DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+        TZ_CONSULTORIO: str = os.getenv("TZ_CONSULTORIO", "America/La_Paz")
+        WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
+        WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
+        GOOGLE_REFRESH_TOKEN: str = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+        GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+        GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
+        PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+        RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
+        RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
+    settings = Settings()
 
 # Normalizar URL para compatibilidad de driver PostgreSQL en SQLAlchemy 2.0 y soporte IPv4
 db_url = settings.DATABASE_URL
@@ -659,6 +676,176 @@ def worker_sync_outbox(db: Session):
             else:
                 outbox.proximo_intento = ahora + timedelta(minutes=2 ** outbox.intentos)
             db.commit()
+
+def worker_sync_inverso_google(db: Session):
+    """
+    Sondeo periódico de Google Calendar (iPhone / Google Calendar -> App Web):
+    Consulta los eventos en el calendario 'primary' (pamelaps6186@gmail.com).
+    - Si un evento fue cancelado o eliminado en Google Calendar, actualiza la cita en Supabase a 'cancelada'.
+    - Si el evento ya existe en agenda.citas y cambiaron sus horarios, actualiza inicio y fin.
+    - Si el evento fue creado manualmente en el iPhone (no existe en agenda.citas):
+      extrae nombre del paciente, fechas/horas, asocia o crea el paciente e inserta la cita como 'confirmada'.
+    """
+    try:
+        service = _get_calendar_service()
+    except Exception as e:
+        print(f"[Sync Inverso Google] Error al obtener credenciales de Google Calendar: {e}")
+        return
+
+    ahora_utc = datetime.now(timezone.utc)
+    tiempo_limite = (ahora_utc - timedelta(days=7)).isoformat()
+
+    try:
+        try:
+            res = service.events().list(
+                calendarId=settings.CALENDAR_ID,
+                updatedMin=tiempo_limite,
+                showDeleted=True,
+                singleEvents=False,
+                maxResults=100
+            ).execute()
+        except Exception:
+            res = service.events().list(
+                calendarId=settings.CALENDAR_ID,
+                updatedMin=tiempo_limite,
+                maxResults=100
+            ).execute()
+
+        eventos = res.get("items", [])
+        if not eventos:
+            return
+
+        tz_bol = ZoneInfo(settings.TZ_CONSULTORIO)
+
+        for evento in eventos:
+            gid = evento.get("id")
+            if not gid:
+                continue
+
+            status = evento.get("status")
+            cita = db.execute(select(Cita).where(Cita.google_event_id == gid)).scalar_one_or_none()
+
+            # 1. Evento eliminado o cancelado en Google Calendar
+            if status == "cancelled":
+                if cita and cita.estado != "cancelada":
+                    print(f"🗑️ [Sync Inverso Google] Cita cancelada en Google Calendar detectada: ID {cita.id}")
+                    cita.estado = "cancelada"
+                    cita.updated_at = ahora_utc
+                    registrar_auditoria(db, cita.id, "doctora_iphone", "cancelar_google", antes={"estado": cita.estado}, despues={"estado": "cancelada"})
+                    db.commit()
+                continue
+
+            # 2. Extraer horarios de inicio y fin
+            start_data = evento.get("start", {})
+            end_data = evento.get("end", {})
+            inicio_raw = start_data.get("dateTime") or start_data.get("date")
+            fin_raw = end_data.get("dateTime") or end_data.get("date")
+
+            if not inicio_raw or len(inicio_raw) == 10:
+                continue
+
+            try:
+                dt_inicio = datetime.fromisoformat(inicio_raw.replace("Z", "+00:00"))
+                if dt_inicio.tzinfo is None:
+                    dt_inicio = dt_inicio.replace(tzinfo=tz_bol)
+            except Exception:
+                continue
+
+            if fin_raw and len(fin_raw) > 10:
+                try:
+                    dt_fin = datetime.fromisoformat(fin_raw.replace("Z", "+00:00"))
+                    if dt_fin.tzinfo is None:
+                        dt_fin = dt_fin.replace(tzinfo=tz_bol)
+                except Exception:
+                    dt_fin = dt_inicio + timedelta(minutes=30)
+            else:
+                dt_fin = dt_inicio + timedelta(minutes=30)
+
+            summary = (evento.get("summary") or "Consulta Dra. Pamela").strip()
+
+            # 3. Cita existente: Actualizar horario si fue reprogramada en el iPhone
+            if cita:
+                c_ini_utc = cita.inicio.astimezone(timezone.utc) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc)
+                dt_ini_utc = dt_inicio.astimezone(timezone.utc)
+                if abs((c_ini_utc - dt_ini_utc).total_seconds()) > 60:
+                    print(f"🔄 [Sync Inverso Google] Reprogramando cita {cita.id} desde iPhone a {dt_inicio}")
+                    cita.inicio = dt_inicio
+                    cita.fin = dt_fin
+                    cita.updated_at = ahora_utc
+                    registrar_auditoria(db, cita.id, "doctora_iphone", "reprogramar_google", despues={"inicio": str(dt_inicio), "fin": str(dt_fin)})
+                    db.commit()
+                continue
+
+            # 4. Nueva cita creada manualmente en el iPhone: Importar a agenda.citas
+            nombre_paciente = summary
+            if summary.lower().startswith("cita:"):
+                nombre_paciente = summary[5:].strip()
+            elif summary.lower().startswith("cita "):
+                nombre_paciente = summary[5:].strip()
+            elif summary.lower().startswith("consulta "):
+                nombre_paciente = summary[9:].strip()
+            if not nombre_paciente:
+                nombre_paciente = "Paciente iPhone"
+
+            paciente = db.execute(
+                select(Paciente).where(func.lower(Paciente.nombre) == nombre_paciente.lower())
+            ).scalars().first()
+
+            if not paciente:
+                descripcion = evento.get("description", "") or ""
+                m_tel = re.search(r"(\+?591\s?)?([67]\d{7})", descripcion)
+                if m_tel:
+                    tel_extraido = normalizar_telefono(m_tel.group(0))
+                    paciente = db.execute(select(Paciente).where(Paciente.telefono == tel_extraido)).scalar_one_or_none()
+
+            if not paciente:
+                tel_hash = f"+59199{abs(hash(gid)) % 1000000:06d}"
+                while db.execute(select(Paciente).where(Paciente.telefono == tel_hash)).scalar_one_or_none():
+                    tel_hash = f"+59199{abs(hash(gid + str(uuid.uuid4()))) % 1000000:06d}"
+                paciente = Paciente(
+                    nombre=nombre_paciente,
+                    telefono=tel_hash,
+                    notas="Registrado automáticamente desde Google Calendar (iPhone de la Doctora)"
+                )
+                db.add(paciente)
+                db.flush()
+
+            trat = db.execute(
+                select(Tratamiento).where(Tratamiento.activo == True).order_by(Tratamiento.id)
+            ).scalars().first()
+            if not trat:
+                trat = Tratamiento(nombre="Consulta y Diagnóstico", duracion_min=30, precio=100.0)
+                db.add(trat)
+                db.flush()
+
+            nueva_cita = Cita(
+                paciente_id=paciente.id,
+                tratamiento_id=trat.id,
+                inicio=dt_inicio,
+                fin=dt_fin,
+                estado="confirmada",
+                motivo=summary,
+                notas="Sincronizado automáticamente desde iPhone (Google Calendar)",
+                google_event_id=gid,
+                recordatorio_enviado=True
+            )
+            generar_token_respuesta(db, nueva_cita)
+
+            try:
+                db.add(nueva_cita)
+                db.flush()
+                registrar_auditoria(db, nueva_cita.id, "doctora_iphone", "crear_desde_google", despues={"inicio": str(dt_inicio), "estado": "confirmada"})
+                db.commit()
+                print(f"✅ [Sync Inverso Google] Cita de iPhone importada con éxito: '{nombre_paciente}' ({dt_inicio.strftime('%d/%m/%Y %H:%M')})")
+            except IntegrityError as err_int:
+                db.rollback()
+                print(f"⚠️ [Sync Inverso Google] Aviso de colisión al importar cita de iPhone '{summary}': {err_int}")
+            except Exception as err_ins:
+                db.rollback()
+                print(f"⚠️ [Sync Inverso Google] Error al guardar cita de iPhone: {err_ins}")
+
+    except Exception as e:
+        print(f"[Sync Inverso Google] Error en el ciclo de sondeo: {e}")
 
 def worker_recordatorios(db: Session):
     ahora = datetime.now(timezone.utc)
