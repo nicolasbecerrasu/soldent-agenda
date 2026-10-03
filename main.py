@@ -28,38 +28,20 @@ try:
 except Exception:
     pass
 
-try:
-    from pydantic_settings import BaseSettings
-    class Settings(BaseSettings):
-        DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-        TZ_CONSULTORIO: str = os.getenv("TZ_CONSULTORIO", "America/La_Paz")
-        WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
-        WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
-        GOOGLE_REFRESH_TOKEN: str = os.getenv("GOOGLE_REFRESH_TOKEN", "")
-        GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
-        GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-        CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
-        PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
-        RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
-        RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
-        class Config:
-            env_file = ".env"
-            extra = "ignore"
-    settings = Settings()
-except Exception:
-    class Settings:
-        DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-        TZ_CONSULTORIO: str = os.getenv("TZ_CONSULTORIO", "America/La_Paz")
-        WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
-        WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
-        GOOGLE_REFRESH_TOKEN: str = os.getenv("GOOGLE_REFRESH_TOKEN", "")
-        GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
-        GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-        CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
-        PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
-        RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
-        RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
-    settings = Settings()
+class Settings:
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    TZ_CONSULTORIO: str = os.getenv("TZ_CONSULTORIO", "America/La_Paz")
+    WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
+    WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
+    GOOGLE_REFRESH_TOKEN: str = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+    RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
+    RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
+
+settings = Settings()
 
 # Normalizar URL para compatibilidad de driver PostgreSQL en Termux (pg8000 pure-python) y Render
 db_url = settings.DATABASE_URL
@@ -869,6 +851,8 @@ def worker_sync_inverso_google(db: Session):
 
 def worker_recordatorios(db: Session):
     ahora = datetime.now(timezone.utc)
+    rec_min = int(getattr(settings, "RECORDATORIO_MIN", 175))
+    rec_max = int(getattr(settings, "RECORDATORIO_MAX", 185))
     # Detecta citas que inicien en la ventana de 175 a 185 minutos (3 horas) y sin recordatorio previo
     rows = db.execute(
         select(Cita, Paciente)
@@ -876,8 +860,8 @@ def worker_recordatorios(db: Session):
         .where(
             Cita.estado.in_(["pendiente", "confirmada"]),
             Cita.recordatorio_enviado == False,
-            Cita.inicio >= ahora + timedelta(minutes=settings.RECORDATORIO_MIN),
-            Cita.inicio <= ahora + timedelta(minutes=settings.RECORDATORIO_MAX)
+            Cita.inicio >= ahora + timedelta(minutes=rec_min),
+            Cita.inicio <= ahora + timedelta(minutes=rec_max)
         )
     ).all()
     for cita, paciente in rows:
@@ -891,10 +875,11 @@ def worker_recordatorios(db: Session):
         db.add(ya)
         try:
             db.flush()
-            tz_bol = ZoneInfo(settings.TZ_CONSULTORIO)
+            tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
             dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
             hora_str = dt_bol.strftime("%H:%M")
-            link = f"{settings.PUBLIC_BASE_URL}/r/{token}"
+            base_url = getattr(settings, "PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+            link = f"{base_url}/r/{token}"
             mensaje = (
                 f"🦷 *SOLDENT - Recordatorio de Cita*\n"
                 f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta odontológica programada con la *Dra. Pamela Pinto Suárez* para las *{hora_str}*.\n\n"
@@ -905,8 +890,8 @@ def worker_recordatorios(db: Session):
             )
             try:
                 httpx.post(
-                    "http://localhost:8080/send-message",
-                    json={"number": paciente.telefono, "text": mensaje},
+                    "http://127.0.0.1:8080/send-message",
+                    json={"number": paciente.telefono, "text": mensaje, "message": mensaje},
                     timeout=5.0
                 )
                 print(f"[WhatsApp] Recordatorio de 3 horas enviado a {paciente.telefono}")
