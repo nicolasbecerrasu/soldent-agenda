@@ -162,28 +162,31 @@ app.get('/reset', (req, res) => {
 // Evolution API compatibility & direct send endpoint
 async function handleSendText(req, res) {
   try {
-    const { number, text } = req.body;
-    if (!number || !text) {
-      return res.status(400).json({ error: 'Faltan parámetros: number y text son requeridos' });
+    const rawNumber = req.body.number || req.body.phone || req.body.to || req.body.target;
+    const rawText = req.body.text !== undefined ? req.body.text : (req.body.message !== undefined ? req.body.message : '');
+    const texto = (typeof rawText === 'string' ? rawText : String(rawText || '')).trim();
+
+    if (!rawNumber || !texto) {
+      return res.status(400).json({ error: 'Faltan parámetros: number y text/message válidos son requeridos' });
     }
 
     if (!sock || !isConnected) {
       return res.status(503).json({ error: 'WhatsApp no está conectado todavía. Por favor escanea el código QR en http://localhost:8080' });
     }
 
-    let targetJid = number;
+    let targetJid = rawNumber;
 
     // Handle @lid or @s.whatsapp.net or raw phone numbers
-    if (typeof number === 'string' && (number.includes('@lid') || number.includes('@s.whatsapp.net'))) {
-      targetJid = number;
+    if (typeof rawNumber === 'string' && (rawNumber.includes('@lid') || rawNumber.includes('@s.whatsapp.net'))) {
+      targetJid = rawNumber;
     } else {
-      const clean = String(number).replace(/\D/g, '');
+      const clean = String(rawNumber).replace(/\D/g, '');
       targetJid = `${clean}@s.whatsapp.net`;
     }
 
-    await sock.sendMessage(targetJid, { text });
-    console.log(`[WhatsApp OUT] Mensaje enviado con éxito a ${targetJid}: ${text.substring(0, 45)}...`);
-    res.json({ status: 'SUCCESS', message: 'Mensaje enviado correctamente', target: targetJid });
+    await sock.sendMessage(targetJid, { text: texto });
+    console.log(`[WhatsApp OUT] Mensaje enviado con éxito a ${targetJid}: ${texto.substring(0, 45)}...`);
+    res.json({ status: 'SUCCESS', message: 'Mensaje enviado correctamente', target: targetJid, text: texto });
   } catch (err) {
     console.error('[WhatsApp OUT Error]', err.message);
     res.status(500).json({ error: err.message });

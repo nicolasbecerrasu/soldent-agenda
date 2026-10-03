@@ -8,13 +8,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, Text, create_engine, func, select, text
+from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, Text, create_engine, func, select, text, event
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+
+try:
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+except ImportError:
+    Credentials = None
+    build = None
+    HttpError = Exception
 
 try:
     from dotenv import load_dotenv
@@ -55,7 +61,7 @@ except Exception:
         RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
     settings = Settings()
 
-# Normalizar URL para compatibilidad de driver PostgreSQL en SQLAlchemy 2.0 y soporte IPv4
+# Normalizar URL para compatibilidad de driver PostgreSQL en Termux (pg8000 pure-python) y Render
 db_url = settings.DATABASE_URL
 
 # Auto-corrección para el host directo IPv6 de Supabase en nubes IPv4 (Render, etc.)
@@ -70,15 +76,25 @@ if "db.uqaprhszthoginyptwrf.supabase.co" in db_url:
     )
 
 if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    db_url = db_url.replace("postgres://", "postgresql+pg8000://", 1)
 elif db_url.startswith("postgresql://") and "+" not in db_url.split("://")[0]:
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    db_url = db_url.replace("postgresql://", "postgresql+pg8000://", 1)
 
+# Configurar motor con soporte universal para pg8000 (sin opciones libpq de C) y pool resiliente
 engine = create_engine(
     db_url,
-    connect_args={"options": "-csearch_path=agenda,public,extensions"},
     pool_pre_ping=True
 )
+
+@event.listens_for(engine, "connect")
+def configurar_search_path(dbapi_connection, connection_record):
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET search_path TO agenda, public, extensions;")
+        cursor.close()
+    except Exception:
+        pass
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 app = FastAPI(title="Agenda Odontológica API", version="2.0.0")
 
@@ -215,7 +231,9 @@ def generar_token_respuesta(db: Session, cita: Cita) -> str:
     cita.token_expira_en = cita.fin + timedelta(hours=2)
     return token
 
-def _get_google_creds() -> Credentials:
+def _get_google_creds():
+    if not Credentials:
+        raise RuntimeError("google-auth no está instalado en este entorno.")
     return Credentials(
         token=None, refresh_token=settings.GOOGLE_REFRESH_TOKEN,
         token_uri="https://oauth2.googleapis.com/token",
@@ -224,6 +242,8 @@ def _get_google_creds() -> Credentials:
     )
 
 def _get_calendar_service():
+    if not build:
+        raise RuntimeError("google-api-python-client no está instalado en este entorno.")
     return build("calendar", "v3", credentials=_get_google_creds())
 
 # =============================================================
