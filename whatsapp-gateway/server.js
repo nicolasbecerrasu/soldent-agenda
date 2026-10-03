@@ -1,9 +1,14 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
-const qrcodeTerminal = require('qrcode-terminal');
+let qrcodeTerminal = null;
+try { qrcodeTerminal = require('qrcode-terminal'); } catch (e) {}
+
 const express = require('express');
-const cors = require('cors');
+
+let cors = null;
+try { cors = require('cors'); } catch (e) {}
+
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -12,7 +17,17 @@ const PORT = 8080;
 const PYTHON_BOT_URL = 'http://127.0.0.1:5005/webhook';
 
 const app = express();
-app.use(cors());
+if (cors) {
+  app.use(cors());
+} else {
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', '*');
+    res.header('Access-Control-Allow-Methods', '*');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+  });
+}
 app.use(express.json());
 
 let sock = null;
@@ -308,8 +323,9 @@ async function startBaileys() {
 
         console.log('\n' + '='.repeat(60));
         console.log('📌 [WHATSAPP QR CODE GENERADO] Escanea este código:');
-        console.log('='.repeat(60) + '\n');
-        qrcodeTerminal.generate(qr, { small: true });
+        if (qrcodeTerminal) {
+          try { qrcodeTerminal.generate(qr, { small: true }); } catch (e) {}
+        }
         console.log('\n💡 También puedes abrir en tu navegador: http://localhost:8080');
         console.log('='.repeat(60) + '\n');
       }

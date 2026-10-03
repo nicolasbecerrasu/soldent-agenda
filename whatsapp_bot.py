@@ -35,7 +35,7 @@ CLINICA_DIRECCION = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Va
 CLINICA_NOMBRE = os.getenv("CLINICA_NOMBRE", "Soldent - Soluciones Dentales")
 DOCTORA_NOMBRE = os.getenv("DOCTORA_NOMBRE", "Dra. Pamela Pinto Suárez")
 DOCTORA_TELEFONO = os.getenv("DOCTORA_TELEFONO", "+59178472875")
-API_BACKEND_URL = os.getenv("API_BACKEND_URL", "http://127.0.0.1:8000")
+API_BACKEND_URL = os.getenv("API_BACKEND_URL", "https://soldent-agenda.onrender.com")
 
 # Mensaje oficial por defecto ante fallas o falta de API key
 MENSAJE_OFICIAL_DEFAULT = (
