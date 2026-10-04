@@ -18,8 +18,8 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre.trim() || !telefono.trim()) {
-      setError('Nombre y teléfono son obligatorios');
+    if (!nombre.trim()) {
+      setError('El nombre del paciente es obligatorio');
       return;
     }
 
@@ -29,7 +29,7 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
       await api.crearPaciente({
         nombre: nombre.trim(),
         apellidos: apellidos.trim() || undefined,
-        telefono: telefono.trim(),
+        telefono: telefono.trim() ? telefono.trim() : undefined,
         email: email.trim() || undefined,
         notas: notas.trim() || undefined,
       });
@@ -110,7 +110,7 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-              Teléfono (Bolivia +591) *
+              Teléfono (Bolivia +591) - Opcional
             </label>
             <div className="relative">
               <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -120,10 +120,9 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                required
               />
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Se normalizará automáticamente a +591</p>
+            <p className="text-[11px] text-slate-400 mt-1">Opcional. Se normalizará a +591 si se ingresa</p>
           </div>
 
           <div>

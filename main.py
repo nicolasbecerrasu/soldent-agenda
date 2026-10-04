@@ -270,14 +270,28 @@ ESTADOS_VALIDOS = {"pendiente", "confirmada", "cancelada", "atendida", "no_asist
 @app.post("/api/pacientes", status_code=status.HTTP_201_CREATED)
 def crear_paciente(data: PacienteIn, db: Session = Depends(get_db)):
     tel = normalizar_telefono(data.telefono) if (data.telefono and data.telefono.strip()) else None
-    if tel and db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none():
-        raise HTTPException(409, "Ya existe un paciente con ese teléfono")
+    if tel:
+        existente = db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none()
+        if existente:
+            if data.nombre and data.nombre.strip():
+                existente.nombre = data.nombre.strip()
+                db.commit()
+            return {"id": str(existente.id)}
+    elif data.nombre and data.nombre.strip():
+        existente_nom = db.execute(select(Paciente).where(func.lower(Paciente.nombre) == data.nombre.strip().lower())).scalars().first()
+        if existente_nom:
+            return {"id": str(existente_nom.id)}
     p = Paciente(**data.model_dump(exclude={"telefono"}), telefono=tel)
     db.add(p)
     try:
         db.commit(); db.refresh(p)
     except IntegrityError:
-        db.rollback(); raise HTTPException(409, "Paciente duplicado")
+        db.rollback()
+        if tel:
+            existente = db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none()
+            if existente:
+                return {"id": str(existente.id)}
+        raise HTTPException(409, "Paciente duplicado")
     return {"id": str(p.id)}
 
 @app.patch("/api/pacientes/{pid}")
@@ -555,9 +569,15 @@ def eliminar_cita(cid: uuid.UUID, db: Session = Depends(get_db)):
     
     gid = cita.google_event_id
     if gid:
-        encolar_outbox(db, cid, "delete", {"google_event_id": gid})
+        try:
+            service = _get_calendar_service()
+            service.events().delete(calendarId=settings.CALENDAR_ID, eventId=gid).execute()
+            print(f"🗑️ [Google Calendar] Evento {gid} eliminado de inmediato.")
+        except Exception as err:
+            print(f"⚠️ [Google Calendar] No se pudo borrar evento directo ({err}), encolando outbox.")
+            encolar_outbox(db, cid, "delete", {"google_event_id": gid})
     
-    registrar_auditoria(db, cid, "doctora", "eliminar", antes={"estado": cita.estado, "inicio": str(cita.inicio)})
+    registrar_auditoria(db, cid, "doctora", "eliminar", antes={"estado": cita.estado, "inicio": str(cita.inicio), "google_event_id": gid})
     db.delete(cita)
     db.commit()
     return {"ok": True, "id": str(cid)}
@@ -709,7 +729,34 @@ def worker_sync_outbox(db: Session):
         try:
             service = _get_calendar_service()
             event_id = outbox.payload.get("google_event_id")
-            event_body = {"summary": f"Cita: {outbox.payload.get('paciente_nombre', 'Paciente')}", "start": {"dateTime": outbox.payload["inicio"], "timeZone": settings.TZ_CONSULTORIO}, "end": {"dateTime": outbox.payload["fin"], "timeZone": settings.TZ_CONSULTORIO}}
+
+            # 1. Eliminación de eventos en Google Calendar
+            if outbox.accion == "delete":
+                if event_id:
+                    try:
+                        service.events().delete(calendarId=settings.CALENDAR_ID, eventId=event_id).execute()
+                    except Exception as del_err:
+                        # Si ya no existe en Google (404 o 410 Gone), se considera exitosa la eliminación
+                        if "404" not in str(del_err) and "410" not in str(del_err):
+                            raise del_err
+                outbox.estado, outbox.procesado_en = "completado", ahora
+                db.commit()
+                continue
+
+            # 2. Creación o Actualización de eventos
+            inicio_iso = outbox.payload.get("inicio")
+            fin_iso = outbox.payload.get("fin")
+            if not inicio_iso or not fin_iso:
+                outbox.estado, outbox.ultimo_error = "fallido", "Falta fecha de inicio o fin en payload"
+                outbox.procesado_en = ahora
+                db.commit()
+                continue
+
+            event_body = {
+                "summary": f"Cita: {outbox.payload.get('paciente_nombre', 'Paciente')}",
+                "start": {"dateTime": inicio_iso, "timeZone": settings.TZ_CONSULTORIO},
+                "end": {"dateTime": fin_iso, "timeZone": settings.TZ_CONSULTORIO}
+            }
             
             if outbox.accion == "create":
                 res = service.events().insert(calendarId=settings.CALENDAR_ID, body=event_body).execute()
@@ -717,9 +764,6 @@ def worker_sync_outbox(db: Session):
                 outbox.estado, outbox.procesado_en = "completado", ahora
             elif outbox.accion == "update" and event_id:
                 service.events().update(calendarId=settings.CALENDAR_ID, eventId=event_id, body=event_body).execute()
-                outbox.estado, outbox.procesado_en = "completado", ahora
-            elif outbox.accion == "delete" and event_id:
-                service.events().delete(calendarId=settings.CALENDAR_ID, eventId=event_id).execute()
                 outbox.estado, outbox.procesado_en = "completado", ahora
             db.commit()
         except Exception as e:
@@ -827,6 +871,32 @@ def worker_sync_inverso_google(db: Session):
                     cita.updated_at = ahora_utc
                     registrar_auditoria(db, cita.id, "doctora_iphone", "reprogramar_google", despues={"inicio": str(dt_inicio), "fin": str(dt_fin)})
                     db.commit()
+                continue
+
+            # 3.5. Comprobar si esta cita fue eliminada explícitamente en el sistema (evitar bucle de reimportación)
+            ya_eliminado = db.execute(
+                select(AuditoriaCita).where(
+                    AuditoriaCita.accion == "eliminar",
+                    text("antes->>'google_event_id' = :gid").params(gid=gid)
+                )
+            ).scalars().first()
+
+            if not ya_eliminado:
+                ya_eliminado = db.execute(
+                    select(SyncOutbox).where(
+                        SyncOutbox.accion == "delete",
+                        text("payload->>'google_event_id' = :gid").params(gid=gid)
+                    )
+                ).scalars().first()
+
+            if ya_eliminado:
+                print(f"🛑 [Sync Inverso Google] Evento {gid} ({summary}) fue eliminado voluntariamente de la agenda. Ignorando re-importación.")
+                if status != "cancelled":
+                    try:
+                        service.events().delete(calendarId=settings.CALENDAR_ID, eventId=gid).execute()
+                        print(f"🗑️ [Sync Inverso Google] Evento huérfano {gid} purgado de Google Calendar.")
+                    except Exception:
+                        pass
                 continue
 
             # 4. Nueva cita creada manualmente en el iPhone: Importar a agenda.citas
