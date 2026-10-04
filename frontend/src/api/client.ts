@@ -6,6 +6,30 @@ const isLocalDev = typeof window !== 'undefined' && (window.location.port === '5
 const defaultBase = isLocalDev ? `http://${window.location.hostname}:8000/api` : '/api';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || defaultBase).replace(/\/$/, '');
 
+const TOKEN_KEY = 'soldent_auth_token';
+
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string, recordar: boolean = true): void {
+  if (typeof window === 'undefined') return;
+  if (recordar) {
+    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem(TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export function removeAuthToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
 function getFullUrl(path: string, params?: Record<string, string | undefined>): string {
   const base = API_BASE.startsWith('http')
     ? API_BASE
@@ -24,18 +48,88 @@ function getFullUrl(path: string, params?: Record<string, string | undefined>): 
   return url.toString();
 }
 
+async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers || {});
+  
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const res = await fetch(input, {
+    ...init,
+    headers,
+  });
+
+  if (res.status === 401) {
+    removeAuthToken();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('soldent:unauthorized'));
+    }
+  }
+
+  return res;
+}
+
 export const api = {
+  // AUTENTICACIÓN
+  async loginConPin(pin: string, recordar: boolean = true): Promise<{ ok: boolean; token: string; usuario: string }> {
+    const url = getFullUrl('/auth/pin');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'PIN incorrecto' }));
+      throw new Error(err.detail || 'PIN incorrecto. Intenta de nuevo.');
+    }
+
+    const data = await res.json();
+    if (data.token) {
+      setAuthToken(data.token, recordar);
+    }
+    return data;
+  },
+
+  async verificarToken(): Promise<boolean> {
+    const token = getAuthToken();
+    if (!token) return false;
+    try {
+      const url = getFullUrl('/auth/verificar');
+      const res = await authFetch(url);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  isAutenticado(): boolean {
+    return !!getAuthToken();
+  },
+
+  logout(): void {
+    removeAuthToken();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('soldent:unauthorized'));
+    }
+  },
+
   // CITAS
   async getCitas(params?: { desde?: string; hasta?: string; estado?: string }): Promise<Cita[]> {
     const url = getFullUrl('/citas', params);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Error al obtener citas: ${res.statusText}`);
+    const res = await authFetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Error al obtener citas: ${res.statusText}`);
+    }
     return res.json();
   },
 
   async crearCita(payload: CrearCitaPayload): Promise<{ id: string; fin: string; estado: string; version: number; link_respuesta: string }> {
     const url = getFullUrl('/citas');
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -49,7 +143,7 @@ export const api = {
 
   async actualizarCita(id: string, payload: { version: number; estado?: string; inicio?: string; tratamiento_id?: string; notas?: string }): Promise<any> {
     const url = getFullUrl(`/citas/${id}`);
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -63,7 +157,7 @@ export const api = {
 
   async eliminarCita(id: string): Promise<{ ok: boolean; id: string }> {
     const url = getFullUrl(`/citas/${id}`);
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'DELETE',
     });
     if (!res.ok) {
@@ -76,22 +170,28 @@ export const api = {
   // TRATAMIENTOS
   async getTratamientos(): Promise<Tratamiento[]> {
     const url = getFullUrl('/tratamientos');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Error al obtener tratamientos: ${res.statusText}`);
+    const res = await authFetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Error al obtener tratamientos: ${res.statusText}`);
+    }
     return res.json();
   },
 
   // PACIENTES
   async getPacientes(q: string = ''): Promise<Paciente[]> {
     const url = getFullUrl('/pacientes', q ? { q } : undefined);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Error al buscar pacientes: ${res.statusText}`);
+    const res = await authFetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `Error al buscar pacientes: ${res.statusText}`);
+    }
     return res.json();
   },
 
   async crearPaciente(payload: CrearPacientePayload): Promise<{ id: string }> {
     const url = getFullUrl('/pacientes');
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -105,7 +205,7 @@ export const api = {
 
   async actualizarPaciente(id: string, payload: ActualizarPacientePayload): Promise<Paciente> {
     const url = getFullUrl(`/pacientes/${id}`);
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -119,7 +219,7 @@ export const api = {
 
   async eliminarPaciente(id: string): Promise<{ ok: boolean; id: string }> {
     const url = getFullUrl(`/pacientes/${id}`);
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'DELETE',
     });
     if (!res.ok) {

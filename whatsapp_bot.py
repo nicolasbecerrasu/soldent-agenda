@@ -36,6 +36,8 @@ CLINICA_NOMBRE = os.getenv("CLINICA_NOMBRE", "Soldent - Soluciones Dentales")
 DOCTORA_NOMBRE = os.getenv("DOCTORA_NOMBRE", "Dra. Pamela Pinto Suárez")
 DOCTORA_TELEFONO = os.getenv("DOCTORA_TELEFONO", "+59178472875")
 API_BACKEND_URL = os.getenv("API_BACKEND_URL", "https://soldent-agenda.onrender.com")
+SECRET_KEY = os.getenv("SECRET_KEY", "soldent_secret_key_pamela_2026")
+BOT_HEADERS = {"X-Auth-Token": SECRET_KEY}
 
 # Mensaje oficial por defecto ante fallas o falta de API key
 MENSAJE_OFICIAL_DEFAULT = (
@@ -73,7 +75,7 @@ def consultar_disponibilidad(fecha: str) -> str:
 
     citas_dia = []
     try:
-        r = httpx.get(f"{API_BACKEND_URL}/api/citas", timeout=6.0)
+        r = httpx.get(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, timeout=6.0)
         if r.status_code == 200:
             for c in r.json():
                 if (c.get("estado") or "").lower() in ("pendiente", "confirmada", "atendida"):
@@ -117,7 +119,7 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
 
     paciente_id = None
     try:
-        r_pac = httpx.post(f"{API_BACKEND_URL}/api/pacientes", json={
+        r_pac = httpx.post(f"{API_BACKEND_URL}/api/pacientes", headers=BOT_HEADERS, json={
             "nombre": nombre_paciente.strip(),
             "telefono": tel_clean
         }, timeout=6.0)
@@ -126,12 +128,12 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
             paciente_id = r_pac.json().get("id")
         else:
             digitos = "".join(c for c in tel_clean if c.isdigit())[-8:]
-            sr = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={digitos}", timeout=6.0)
+            sr = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={digitos}", headers=BOT_HEADERS, timeout=6.0)
             if sr.status_code == 200 and sr.json():
                 paciente_id = sr.json()[0].get("id")
             else:
                 primer_nombre = nombre_paciente.split()[0]
-                sr2 = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={primer_nombre}", timeout=6.0)
+                sr2 = httpx.get(f"{API_BACKEND_URL}/api/pacientes?q={primer_nombre}", headers=BOT_HEADERS, timeout=6.0)
                 if sr2.status_code == 200 and sr2.json():
                     paciente_id = sr2.json()[0].get("id")
     except Exception as e:
@@ -143,7 +145,7 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
     tratamiento_id = None
     duracion_min = 30
     try:
-        r_trat = httpx.get(f"{API_BACKEND_URL}/api/tratamientos", timeout=6.0)
+        r_trat = httpx.get(f"{API_BACKEND_URL}/api/tratamientos", headers=BOT_HEADERS, timeout=6.0)
         if r_trat.status_code == 200:
             trats = r_trat.json()
             for t in trats:
@@ -196,7 +198,7 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
 
     # Validación anti-solapamiento y anti-duplicados previa
     try:
-        r_citas_existentes = httpx.get(f"{API_BACKEND_URL}/api/citas", timeout=6.0)
+        r_citas_existentes = httpx.get(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, timeout=6.0)
         if r_citas_existentes.status_code == 200:
             for c in r_citas_existentes.json():
                 p_c_id = c.get("paciente_id") or (c.get("paciente") or {}).get("id")
@@ -220,7 +222,7 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
         safe_print(f"[Aviso Chequeo Citas]: {e}")
 
     try:
-        r_cita = httpx.post(f"{API_BACKEND_URL}/api/citas", json={
+        r_cita = httpx.post(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, json={
             "paciente_id": paciente_id,
             "tratamiento_id": tratamiento_id,
             "inicio": inicio_iso,
@@ -253,7 +255,7 @@ def construir_prompt_sistema(tel_paciente: str) -> str:
     # Resumen de citas ocupadas próximas
     citas_proximas = []
     try:
-        r = httpx.get(f"{API_BACKEND_URL}/api/citas", timeout=4.0)
+        r = httpx.get(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, timeout=4.0)
         if r.status_code == 200:
             for c in r.json():
                 if (c.get("estado") or "").lower() in ("pendiente", "confirmada"):

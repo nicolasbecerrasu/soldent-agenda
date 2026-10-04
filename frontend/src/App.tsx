@@ -9,6 +9,7 @@ import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
 import { ModalEditarPaciente } from './components/ModalEditarPaciente';
 import { IosInstallBanner } from './components/IosInstallBanner';
+import { PantallaPin } from './components/PantallaPin';
 import {
   Calendar,
   List,
@@ -17,10 +18,12 @@ import {
   RefreshCw,
   Search,
   Edit2,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react';
 
 export function App() {
+  const [autenticado, setAutenticado] = useState<boolean | null>(null);
   const [tabActiva, setTabActiva] = useState<'semanal' | 'lista' | 'pacientes'>('semanal');
   const [citas, setCitas] = useState<Cita[]>([]);
   const [tratamientos, setTratamientos] = useState<Tratamiento[]>([]);
@@ -71,7 +74,23 @@ export function App() {
   };
 
   useEffect(() => {
-    cargarDatos();
+    const verificarAcceso = async () => {
+      const sesionValida = await api.verificarToken();
+      setAutenticado(sesionValida);
+      if (sesionValida) {
+        cargarDatos();
+      } else {
+        setCargando(false);
+      }
+    };
+    verificarAcceso();
+
+    const handleDesautenticado = () => {
+      setAutenticado(false);
+    };
+
+    window.addEventListener('soldent:unauthorized', handleDesautenticado);
+    return () => window.removeEventListener('soldent:unauthorized', handleDesautenticado);
   }, []);
 
   // Actualizar estado de una cita
@@ -91,6 +110,28 @@ export function App() {
     setSlotSeleccionado({ fecha, hora });
     setModalCitaAbierto(true);
   };
+
+  if (autenticado === null) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <div className="w-9 h-9 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-slate-600 tracking-wide uppercase">Cargando Soldent...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (autenticado === false) {
+    return (
+      <PantallaPin
+        onExito={() => {
+          setAutenticado(true);
+          cargarDatos();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans pb-20 md:pb-6">
@@ -142,6 +183,19 @@ export function App() {
               title="Actualizar datos"
             >
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Botón Bloquear / Cerrar Sesión PIN */}
+            <button
+              onClick={() => {
+                if (window.confirm('¿Deseas bloquear el acceso a la agenda? Se solicitará el PIN nuevamente.')) {
+                  api.logout();
+                }
+              }}
+              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-colors shadow-2xs active:scale-95"
+              title="Bloquear acceso con PIN"
+            >
+              <Lock className="w-4 h-4" />
             </button>
 
             {/* En Desktop: Botón + Nueva Cita */}

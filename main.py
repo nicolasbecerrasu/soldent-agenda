@@ -1,9 +1,9 @@
-import hashlib, uuid, asyncio, os, re
+import hashlib, uuid, asyncio, os, re, hmac, time as std_time
 from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from typing import Optional
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,6 +40,8 @@ class Settings:
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
     RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
     RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
+    DOCTORA_PIN: str = os.getenv("DOCTORA_PIN", "1104")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "soldent_secret_key_pamela_2026")
 
 settings = Settings()
 
@@ -192,6 +194,57 @@ class AuditoriaCita(Base):
 # =============================================================
 # 3. HELPERS
 # =============================================================
+def generar_auth_token() -> str:
+    timestamp = int(std_time.time())
+    mensaje = f"dra_pamela:{timestamp}"
+    firma = hmac.new(settings.SECRET_KEY.encode(), mensaje.encode(), hashlib.sha256).hexdigest()
+    return f"{mensaje}:{firma}"
+
+def validar_auth_token(token: str) -> bool:
+    if not token:
+        return False
+    partes = token.split(":")
+    if len(partes) != 3:
+        return False
+    user, ts_str, firma = partes
+    if user != "dra_pamela":
+        return False
+    try:
+        ts = int(ts_str)
+        # Token válido por 90 días en el dispositivo de la doctora
+        if std_time.time() - ts > (90 * 86400):
+            return False
+    except Exception:
+        return False
+    esperada = hmac.new(settings.SECRET_KEY.encode(), f"{user}:{ts_str}".encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(firma, esperada)
+
+def verificar_autenticacion(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_auth_token: Optional[str] = Header(None)
+):
+    # Permitir peticiones internas locales (del bot de WhatsApp que corre en el mismo servidor)
+    client_host = request.client.host if request.client else ""
+    if client_host in ("127.0.0.1", "localhost", "::1"):
+        return True
+
+    if x_auth_token == settings.SECRET_KEY:
+        return True
+
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+    elif x_auth_token:
+        token = x_auth_token.strip()
+
+    if not token or not validar_auth_token(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Acceso restringido. Por favor ingrese el PIN de la Doctora."
+        )
+    return True
+
 def normalizar_telefono(tel: str) -> str:
     digitos = "".join(c for c in tel if c.isdigit())
     if not digitos.startswith("591") and len(digitos) == 8:
@@ -266,11 +319,41 @@ class CitaUpdateIn(BaseModel):
 
 ESTADOS_VALIDOS = {"pendiente", "confirmada", "cancelada", "atendida", "no_asistio"}
 
+class PinLoginIn(BaseModel):
+    pin: str
+
+# =============================================================
+# 4.5. ENDPOINTS AUTENTICACIÓN (PIN DOCTORA)
+# =============================================================
+@app.post("/api/auth/pin")
+def login_pin(data: PinLoginIn):
+    pin_limpio = data.pin.strip() if data.pin else ""
+    if pin_limpio != settings.DOCTORA_PIN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="PIN de acceso incorrecto. Por favor verifica e intenta de nuevo."
+        )
+    token = generar_auth_token()
+    return {
+        "ok": True,
+        "token": token,
+        "usuario": "Dra. Pamela Pinto Suárez",
+        "mensaje": "Acceso autorizado"
+    }
+
+@app.get("/api/auth/verificar")
+def verificar_sesion(_auth: bool = Depends(verificar_autenticacion)):
+    return {
+        "ok": True,
+        "valido": True,
+        "usuario": "Dra. Pamela Pinto Suárez"
+    }
+
 # =============================================================
 # 5. ENDPOINTS CRUD
 # =============================================================
 @app.post("/api/pacientes", status_code=status.HTTP_201_CREATED)
-def crear_paciente(data: PacienteIn, db: Session = Depends(get_db)):
+def crear_paciente(data: PacienteIn, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     tel = normalizar_telefono(data.telefono) if (data.telefono and data.telefono.strip()) else None
     if tel:
         existente = db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none()
@@ -297,7 +380,7 @@ def crear_paciente(data: PacienteIn, db: Session = Depends(get_db)):
     return {"id": str(p.id)}
 
 @app.patch("/api/pacientes/{pid}")
-def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = Depends(get_db)):
+def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     p = db.get(Paciente, pid)
     if not p:
         raise HTTPException(404, "Paciente no encontrado")
@@ -323,7 +406,7 @@ def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = De
     return {"id": str(p.id), "nombre": p.nombre, "telefono": p.telefono}
 
 @app.delete("/api/pacientes/{pid}")
-def eliminar_paciente(pid: uuid.UUID, db: Session = Depends(get_db)):
+def eliminar_paciente(pid: uuid.UUID, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     paciente = db.get(Paciente, pid)
     if not paciente:
         raise HTTPException(404, "Paciente no encontrado")
@@ -347,7 +430,7 @@ def eliminar_paciente(pid: uuid.UUID, db: Session = Depends(get_db)):
     return {"ok": True, "id": str(pid)}
 
 @app.get("/api/pacientes")
-def buscar_pacientes(q: str = "", db: Session = Depends(get_db)):
+def buscar_pacientes(q: str = "", db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     stmt = select(Paciente)
     if q and q.strip():
         like = f"%{q.strip()}%"
@@ -372,7 +455,7 @@ def buscar_pacientes(q: str = "", db: Session = Depends(get_db)):
     ]
 
 @app.get("/api/tratamientos")
-def listar_tratamientos(db: Session = Depends(get_db)):
+def listar_tratamientos(db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     rows = db.execute(select(Tratamiento)).scalars().all()
     return [{"id": str(r.id), "nombre": r.nombre, "duracion_min": r.duracion_min, "color": r.color, "precio": float(r.precio) if r.precio else None} for r in rows]
 
@@ -381,7 +464,8 @@ def listar_citas(
     desde: Optional[datetime] = None,
     hasta: Optional[datetime] = None,
     estado: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _auth: bool = Depends(verificar_autenticacion)
 ):
     stmt = (
         select(Cita, Paciente, Tratamiento)
@@ -476,7 +560,7 @@ def validar_horario_soldent(dt_inicio: datetime, dt_fin: datetime):
         )
 
 @app.post("/api/citas", status_code=status.HTTP_201_CREATED)
-def crear_cita(data: CitaIn, db: Session = Depends(get_db)):
+def crear_cita(data: CitaIn, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     trat = db.get(Tratamiento, data.tratamiento_id)
     if not trat: raise HTTPException(404, "Tratamiento no encontrado")
     duracion = data.duracion_min if (data.duracion_min and data.duracion_min > 0) else trat.duracion_min
@@ -560,7 +644,7 @@ def crear_cita(data: CitaIn, db: Session = Depends(get_db)):
     }
 
 @app.patch("/api/citas/{cid}")
-def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(get_db)):
+def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     cita = db.get(Cita, cid)
     if not cita: raise HTTPException(404, "Cita no encontrada")
     if data.estado and data.estado not in ESTADOS_VALIDOS: raise HTTPException(422, "Estado inválido")
@@ -606,7 +690,7 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
     return {"id": str(cid), "version": row["version"], "fin": row["fin"].isoformat()}
 
 @app.delete("/api/citas/{cid}")
-def eliminar_cita(cid: uuid.UUID, db: Session = Depends(get_db)):
+def eliminar_cita(cid: uuid.UUID, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     cita = db.get(Cita, cid)
     if not cita:
         raise HTTPException(404, "Cita no encontrada")
