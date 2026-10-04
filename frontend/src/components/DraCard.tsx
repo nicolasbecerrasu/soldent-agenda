@@ -126,8 +126,7 @@ export const DraCard: React.FC<Props> = ({
                   <span className="truncate">{t.nombre}</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 text-slate-400 font-mono text-[11px]">
-                  <span>{t.duracion_min}'</span>
-                  {t.precio && <span className="text-emerald-600 font-medium ml-1">Bs.{t.precio}</span>}
+                  <span>{t.duracion_min} min</span>
                 </div>
               </button>
             );

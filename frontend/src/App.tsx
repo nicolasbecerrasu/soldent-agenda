@@ -4,21 +4,19 @@ import type { Cita, Paciente, Tratamiento } from './types';
 import { DraCard } from './components/DraCard';
 import { CalendarioSemanal } from './components/CalendarioSemanal';
 import { ListaCitas } from './components/ListaCitas';
-import { CatalogoTratamientos } from './components/CatalogoTratamientos';
 import { FormNuevoPaciente } from './components/FormNuevoPaciente';
 import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
 import {
   Calendar,
   List,
-  Stethoscope,
   Users,
   Plus,
   RefreshCw
 } from 'lucide-react';
 
 export function App() {
-  const [tabActiva, setTabActiva] = useState<'semanal' | 'lista' | 'tratamientos' | 'pacientes'>('semanal');
+  const [tabActiva, setTabActiva] = useState<'semanal' | 'lista' | 'pacientes'>('semanal');
   const [citas, setCitas] = useState<Cita[]>([]);
   const [tratamientos, setTratamientos] = useState<Tratamiento[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
@@ -171,21 +169,6 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setTabActiva('tratamientos')}
-            className={`py-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
-              tabActiva === 'tratamientos'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Stethoscope className="w-4 h-4" />
-            Catálogo de Tratamientos
-            <span className="text-[11px] px-2 py-0.2 rounded-full bg-slate-100 text-slate-600 font-mono">
-              {tratamientos.length}
-            </span>
-          </button>
-
-          <button
             onClick={() => setTabActiva('pacientes')}
             className={`py-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
               tabActiva === 'pacientes'
@@ -238,10 +221,6 @@ export function App() {
                   onActualizarEstado={handleActualizarEstado}
                 />
               </div>
-            )}
-
-            {tabActiva === 'tratamientos' && (
-              <CatalogoTratamientos tratamientos={tratamientos} cargando={cargando} />
             )}
 
             {tabActiva === 'pacientes' && (
@@ -313,10 +292,10 @@ export function App() {
       {/* ======================================================== */}
       {/* BARRA DE NAVEGACIÓN INFERIOR PARA IPHONE / CELULAR */}
       {/* ======================================================== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-2 py-1.5 flex items-center justify-around md:hidden shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-4 py-1.5 flex items-center justify-around md:hidden shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <button
           onClick={() => setTabActiva('semanal')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
             tabActiva === 'semanal' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -326,7 +305,7 @@ export function App() {
 
         <button
           onClick={() => setTabActiva('lista')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
             tabActiva === 'lista' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -336,22 +315,12 @@ export function App() {
 
         <button
           onClick={() => setTabActiva('pacientes')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
             tabActiva === 'pacientes' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
           <Users className="w-5 h-5 mb-0.5" />
           <span className="text-[10px]">Pacientes</span>
-        </button>
-
-        <button
-          onClick={() => setTabActiva('tratamientos')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
-            tabActiva === 'tratamientos' ? 'text-blue-600 font-bold' : 'text-slate-500'
-          }`}
-        >
-          <Stethoscope className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">Precios</span>
         </button>
       </nav>
 

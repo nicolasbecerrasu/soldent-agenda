@@ -108,7 +108,9 @@ export const ListaCitas: React.FC<Props> = ({ citas, cargando, onActualizarEstad
                   </span>
                   <span className="flex items-center gap-1 text-slate-500">
                     <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    {cita.paciente?.telefono}
+                    {cita.paciente?.telefono && !cita.paciente?.telefono.startsWith('+59199')
+                      ? cita.paciente.telefono
+                      : 'Sin teléfono'}
                   </span>
                 </div>
 

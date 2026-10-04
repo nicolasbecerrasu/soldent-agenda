@@ -177,7 +177,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
             >
               {tratamientos.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.nombre} - {t.duracion_min} min {t.precio ? `(Bs ${t.precio})` : ''}
+                  {t.nombre} ({t.duracion_min} min)
                 </option>
               ))}
             </select>
