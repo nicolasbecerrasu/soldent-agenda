@@ -75,9 +75,15 @@ function resolveLidToPhone(jid) {
   return jid;
 }
 
+// Número oficial del Bot y Número de la Dra. Pamela
+const BOT_PHONE_EXPECTED = '59162422577';
+const DOCTORA_PHONE_FORBIDDEN = '59178472875';
+let lastSecurityWarning = null;
+
 // HTML page for easy QR scanning from browser
 function getHtmlPage() {
   if (isConnected) {
+    const isBotCorrect = userJid && userJid.includes('62422577');
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -86,12 +92,14 @@ function getHtmlPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: white; padding: 32px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; max-width: 440px; width: 100%; border: 1px solid #e2e8f0; }
+    .card { background: white; padding: 32px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; max-width: 460px; width: 100%; border: 1px solid #e2e8f0; }
     .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: #ecfdf5; color: #059669; font-weight: 600; font-size: 14px; margin-bottom: 16px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
     h1 { font-size: 20px; margin: 0 0 8px; color: #0f172a; }
     p { color: #64748b; font-size: 14px; line-height: 1.5; margin: 0; }
-    .badge { margin-top: 16px; display: inline-block; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #334155; }
+    .badge { margin-top: 14px; display: inline-block; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #334155; }
+    .info-box { margin-top: 18px; padding: 12px; border-radius: 12px; font-size: 13px; text-align: left; }
+    .info-box.ok { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
     .btn-reset { margin-top: 24px; display: inline-block; padding: 8px 16px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
   </style>
 </head>
@@ -99,8 +107,15 @@ function getHtmlPage() {
   <div class="card">
     <div class="status"><span class="dot"></span> Conectado y Activo</div>
     <h1>WhatsApp Vinculado con Éxito</h1>
-    <p>La pasarela de Soldent está respondiendo mensajes de WhatsApp en tiempo real con Google Gemini.</p>
+    <p>La pasarela de Soldent está respondiendo mensajes de WhatsApp en tiempo real con IA.</p>
+    
     <div class="badge">${userJid || 'Dispositivo Vinculado'}</div>
+
+    <div class="info-box ok">
+      <b>🤖 Número del Bot:</b> +591 62422577<br>
+      <b>👩‍⚕️ Celular de la Dra. Pamela:</b> +591 78472875 (Independiente / Libre del bot)
+    </div>
+
     <div style="margin-top: 20px;">
       <a href="/reset" class="btn-reset" onclick="return confirm('¿Deseas desvincular y escanear un nuevo QR?')">Desvincular / Escanear nuevo QR</a>
     </div>
@@ -119,13 +134,15 @@ function getHtmlPage() {
   <meta http-equiv="refresh" content="5">
   <style>
     body { font-family: system-ui, sans-serif; background: #f0fdf4; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: white; padding: 32px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 440px; width: 100%; border: 1px solid #bbf7d0; }
-    .header { margin-bottom: 20px; }
+    .card { background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 460px; width: 100%; border: 1px solid #bbf7d0; }
+    .header { margin-bottom: 16px; }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; }
     h1 { font-size: 20px; margin: 0 0 6px; color: #0f172a; }
     p { color: #64748b; font-size: 13px; line-height: 1.4; margin: 0; }
-    .qr-container { padding: 16px; background: white; border: 2px dashed #86efac; border-radius: 16px; display: inline-block; margin: 20px 0; }
-    img { width: 280px; height: 280px; display: block; }
+    .qr-container { padding: 14px; background: white; border: 2px dashed #86efac; border-radius: 16px; display: inline-block; margin: 16px 0; }
+    img { width: 260px; height: 260px; display: block; }
+    .alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 12px; text-align: left; font-size: 12px; color: #991b1b; margin-bottom: 14px; line-height: 1.4; }
+    .bot-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 12px; text-align: left; font-size: 12px; color: #1e40af; margin-bottom: 14px; line-height: 1.4; }
     ol { text-align: left; font-size: 13px; color: #334155; line-height: 1.6; padding-left: 20px; margin: 16px 0 0; }
   </style>
 </head>
@@ -133,14 +150,28 @@ function getHtmlPage() {
   <div class="card">
     <div class="header">
       <div class="badge">Soldent • Pasarela WhatsApp</div>
-      <h1>Escanea el Código QR</h1>
-      <p>Vincula el WhatsApp de Soldent desde tu celular Android secundario</p>
+      <h1>Vincular Bot de WhatsApp</h1>
+      <p>Escanea este código QR con el celular asignado para la atención automática</p>
     </div>
+
+    ${lastSecurityWarning ? `<div class="alert-box"><b>⚠️ ALERTA DE SEGURIDAD:</b><br>${lastSecurityWarning}</div>` : ''}
+
+    <div class="bot-box">
+      <b style="font-size: 13px;">📱 Celular asignado al BOT:</b> <span style="font-weight: 700; font-size: 14px; color: #1d4ed8;">62422577</span> (+591 62422577)<br>
+      Abre WhatsApp en el celular <b>62422577</b> y escanea este código QR.
+    </div>
+
+    <div class="alert-box">
+      <b>⛔ NO ESCANEAR con el iPhone de la Dra. Pamela (78472875):</b><br>
+      El número personal de la doctora no debe tener el bot vinculado para que pueda agendar y chatear libremente.
+    </div>
+
     <div class="qr-container">
       <img src="${currentQRImage}" alt="Código QR WhatsApp" />
     </div>
+
     <ol>
-      <li>Abre WhatsApp en tu celular secundario.</li>
+      <li>En el celular del bot (<b>62422577</b>), abre WhatsApp.</li>
       <li>Toca <b>Menú (⋮)</b> o <b>Ajustes</b> > <b>Dispositivos vinculados</b>.</li>
       <li>Toca <b>Vincular un dispositivo</b> y apunta la cámara a este código QR.</li>
     </ol>
@@ -356,10 +387,31 @@ async function startBaileys() {
         currentQR = null;
         currentQRImage = null;
         userJid = sock.user?.id || 'Conectado';
+        const cleanUserPhone = String(userJid).split('@')[0].split(':')[0].replace(/\D/g, '');
         console.log('\n' + '='.repeat(60));
         console.log('✅ [WHATSAPP CONECTADO!] Dispositivo vinculado con éxito.');
-        console.log(`Usuario: ${userJid}`);
+        console.log(`Usuario: ${userJid} (Teléfono detectado: ${cleanUserPhone})`);
         console.log('='.repeat(60) + '\n');
+
+        // SEGURIDAD CRÍTICA: Bloquear e impedir que el bot se vincule al número personal de la Dra. Pamela (78472875)
+        if (cleanUserPhone.includes('78472875')) {
+          console.error('\n🚨 [SEGURIDAD SOLDENT] ¡ERROR CRÍTICO!');
+          console.error('🚨 Se escaneó el QR con el número personal de la Dra. Pamela (+591 78472875).');
+          console.error('🚨 Desvinculando inmediatamente para proteger su WhatsApp personal y agenda...\n');
+          try {
+            sock.logout();
+          } catch (e) {}
+          if (fs.existsSync(authPath)) {
+            fs.rmSync(authPath, { recursive: true, force: true });
+          }
+          isConnected = false;
+          userJid = null;
+          lastSecurityWarning = '⛔ ATENCIÓN: Se intentó vincular el número personal de la Dra. Pamela (+591 78472875). Por seguridad, la vinculación fue cancelada de inmediato. Por favor escanea este código QR ÚNICAMENTE con el celular del bot (+591 62422577).';
+          setTimeout(startBaileys, 3000);
+          return;
+        }
+
+        lastSecurityWarning = null;
 
         const rootDir = path.resolve(__dirname, '..');
         fs.writeFileSync(path.join(rootDir, 'whatsapp-qr.html'), getHtmlPage(), 'utf-8');
@@ -403,6 +455,13 @@ async function startBaileys() {
 
         // Resolve real phone if it is an LID
         const resolvedPhone = remoteJid.includes('@lid') ? resolveLidToPhone(remoteJid) : remoteJid;
+
+        // SEGURIDAD: Descartar si el mensaje proviene del número de la Dra. Pamela (78472875)
+        if (remoteJid.includes('78472875') || (resolvedPhone && resolvedPhone.includes('78472875'))) {
+          console.log(`[WhatsApp IN] Mensaje de la Dra. Pamela (+591 78472875) detectado. El bot NO responde a la doctora.`);
+          continue;
+        }
+
         console.log(`[WhatsApp IN] De ${pushName} (${remoteJid} -> ${resolvedPhone}): ${text}`);
 
         // Forward to Python bot (asynchronously via HTTP POST)

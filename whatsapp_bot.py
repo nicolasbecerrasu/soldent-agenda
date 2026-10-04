@@ -35,6 +35,7 @@ CLINICA_DIRECCION = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Va
 CLINICA_NOMBRE = os.getenv("CLINICA_NOMBRE", "Soldent - Soluciones Dentales")
 DOCTORA_NOMBRE = os.getenv("DOCTORA_NOMBRE", "Dra. Pamela Pinto Suárez")
 DOCTORA_TELEFONO = os.getenv("DOCTORA_TELEFONO", "+59178472875")
+BOT_PHONE_NUMBER = os.getenv("WHATSAPP_PHONE_NUMBER", "+59162422577")
 API_BACKEND_URL = os.getenv("API_BACKEND_URL", "https://soldent-agenda.onrender.com")
 SECRET_KEY = os.getenv("SECRET_KEY", "soldent_secret_key_pamela_2026")
 BOT_HEADERS = {"X-Auth-Token": SECRET_KEY}
@@ -273,8 +274,9 @@ def construir_prompt_sistema(tel_paciente: str) -> str:
 
     return f"""Eres el asistente virtual oficial de WhatsApp de 'SOLDENT - Clínica Odontológica', ubicada en {CLINICA_DIRECCION}.
 Especialista a cargo: {DOCTORA_NOMBRE} (Especialista en Odontología Integral & Ortodoncia).
-Teléfono directo del consultorio: {DOCTORA_TELEFONO}.
-Teléfono del paciente: {tel_paciente}.
+Teléfono de este bot (número automatizado): {BOT_PHONE_NUMBER}.
+Teléfono directo de la Dra. Pamela (contacto personal / urgencias): {DOCTORA_TELEFONO}.
+Teléfono del paciente que escribe: {tel_paciente}.
 
 FECHA Y HORA ACTUAL: {fecha_actual_legible} (Fecha ISO: {fecha_actual_iso}).
 TURNOS YA OCUPADOS PRÓXIMOS EN CONSULTORIO: {ocupadas_texto}.
@@ -473,6 +475,12 @@ async def recibir_mensaje(req: Request):
 
     if not remitente or not texto:
         return {"ok": False}
+
+    # REGLA ESTRICTA: La Dra. Pamela (78472875) usa su celular para agendamiento directo y vida personal.
+    # El bot NO debe interceptar ni responder automáticamente a los mensajes de la doctora.
+    if "78472875" in tel_paciente or "78472875" in (remitente or ""):
+        safe_print(f"[WhatsApp IN] Mensaje de la Dra. Pamela ({tel_paciente}) recibido. El bot NO responde a la doctora.")
+        return {"ok": True, "ignorado": "doctora_pamela"}
 
     global mensajes_procesados_recientes
     ahora_ts = datetime.now().timestamp()
