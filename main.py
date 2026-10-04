@@ -390,6 +390,9 @@ def crear_cita(data: CitaIn, db: Session = Depends(get_db)):
     trat = db.get(Tratamiento, data.tratamiento_id)
     if not trat: raise HTTPException(404, "Tratamiento no encontrado")
     fin = data.inicio + timedelta(minutes=trat.duracion_min)
+    validar_horario_soldent(data.inicio, fin)
+    paciente = db.get(Paciente, data.paciente_id)
+    if not paciente: raise HTTPException(404, "Paciente no encontrado")
     # 2. Validación estricta anti-traslapes por consultorio/médico (Dra. Pamela Pinto Suárez)
     solapada = db.execute(
         select(Cita)
