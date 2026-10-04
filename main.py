@@ -191,6 +191,12 @@ class AuditoriaCita(Base):
     despues = Column(JSON)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
+class WhatsAppSession(Base):
+    __tablename__ = "whatsapp_session"
+    key = Column(String(255), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 # =============================================================
 # 3. HELPERS
 # =============================================================
@@ -348,6 +354,48 @@ def verificar_sesion(_auth: bool = Depends(verificar_autenticacion)):
         "valido": True,
         "usuario": "Dra. Pamela Pinto Suárez"
     }
+
+# =============================================================
+# 4.6. PERSISTENCIA DE SESIÓN WHATSAPP (BAILEYS / POSTGRESQL)
+# =============================================================
+class SessionItemIn(BaseModel):
+    key: str
+    value: str
+
+class SessionBatchIn(BaseModel):
+    items: dict[str, str]
+
+@app.get("/api/internal/baileys-session")
+def obtener_sesion_baileys(db: Session = Depends(get_db)):
+    rows = db.execute(select(WhatsAppSession)).scalars().all()
+    return {r.key: r.value for r in rows}
+
+@app.post("/api/internal/baileys-session")
+def guardar_archivo_sesion(item: SessionItemIn, db: Session = Depends(get_db)):
+    existente = db.get(WhatsAppSession, item.key)
+    if existente:
+        existente.value = item.value
+    else:
+        db.add(WhatsAppSession(key=item.key, value=item.value))
+    db.commit()
+    return {"ok": True, "key": item.key}
+
+@app.post("/api/internal/baileys-session/batch")
+def guardar_archivos_sesion_batch(data: SessionBatchIn, db: Session = Depends(get_db)):
+    for key, val in data.items.items():
+        existente = db.get(WhatsAppSession, key)
+        if existente:
+            existente.value = val
+        else:
+            db.add(WhatsAppSession(key=key, value=val))
+    db.commit()
+    return {"ok": True, "total": len(data.items)}
+
+@app.delete("/api/internal/baileys-session")
+def borrar_sesion_baileys(db: Session = Depends(get_db)):
+    db.execute(text("DELETE FROM agenda.whatsapp_session"))
+    db.commit()
+    return {"ok": True, "mensaje": "Sesión eliminada de base de datos"}
 
 # =============================================================
 # 5. ENDPOINTS CRUD

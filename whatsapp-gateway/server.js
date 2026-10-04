@@ -80,6 +80,88 @@ const BOT_PHONE_EXPECTED = '59162422577';
 const DOCTORA_PHONE_FORBIDDEN = '59178472875';
 let lastSecurityWarning = null;
 
+const BACKEND_INTERNAL_URL = process.env.API_BACKEND_URL || 'http://127.0.0.1:8000';
+
+// Restaurar archivos de sesión desde Supabase al arrancar
+async function restaurarSesionDesdeDB() {
+  for (let intento = 1; intento <= 6; intento++) {
+    try {
+      console.log(`[WhatsApp Sync] Verificando sesión guardada en Supabase (intento ${intento})...`);
+      const resp = await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const keys = Object.keys(data);
+        if (keys.length > 0) {
+          if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+          for (const k of keys) {
+            const filePath = path.join(authPath, k);
+            fs.writeFileSync(filePath, data[k], 'utf-8');
+          }
+          console.log(`[WhatsApp Sync] ✅ ¡Restaurados ${keys.length} archivos de sesión desde Supabase!`);
+        } else {
+          console.log('[WhatsApp Sync] Base de datos lista: sin sesión previa aún.');
+        }
+        return true;
+      }
+    } catch (e) {
+      console.log(`[WhatsApp Sync] Esperando a que FastAPI inicie... (${e.message})`);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
+// Guardar archivo individual de sesión en Supabase
+async function sincronizarArchivoADB(filename) {
+  try {
+    const filePath = path.join(authPath, filename);
+    if (!fs.existsSync(filePath)) return;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: filename, value: content })
+    });
+  } catch (e) {
+    // Silencioso para evitar saturación
+  }
+}
+
+// Sincronizar todos los archivos de sesión en Supabase (batch)
+async function sincronizarDirectorioADB() {
+  try {
+    if (!fs.existsSync(authPath)) return;
+    const files = fs.readdirSync(authPath);
+    const items = {};
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const filePath = path.join(authPath, file);
+        items[file] = fs.readFileSync(filePath, 'utf-8');
+      }
+    }
+    const count = Object.keys(items).length;
+    if (count === 0) return;
+    await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    console.log(`[WhatsApp Sync] ✅ Respaldo en base de datos actualizado (${count} archivos).`);
+  } catch (e) {
+    // Silencioso para evitar saturación de logs
+  }
+}
+
+// Limpiar sesión en Supabase al hacer /reset o logout
+async function borrarSesionEnDB() {
+  try {
+    await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`, { method: 'DELETE' });
+    console.log('[WhatsApp Sync] Sesión eliminada de Supabase.');
+  } catch (e) {
+    console.warn('[WhatsApp Sync Error al borrar sesión en DB]:', e.message);
+  }
+}
+
 // HTML page for easy QR scanning from browser
 function getHtmlPage() {
   if (isConnected) {
@@ -199,7 +281,7 @@ app.get('/status', (req, res) => {
   });
 });
 
-app.get('/reset', (req, res) => {
+app.get('/reset', async (req, res) => {
   try {
     isConnected = false;
     currentQR = null;
@@ -211,6 +293,7 @@ app.get('/reset', (req, res) => {
     if (fs.existsSync(authPath)) {
       fs.rmSync(authPath, { recursive: true, force: true });
     }
+    await borrarSesionEnDB();
     setTimeout(startBaileys, 1000);
     res.send('<p>Sesión reiniciada. <a href="/">Volver a escanear QR</a></p><script>setTimeout(() => location.href="/", 1500);</script>');
   } catch (err) {
@@ -321,6 +404,8 @@ app.post('/instance/updateProfilePicture', handleUpdateProfilePicture);
 
 async function startBaileys() {
   try {
+    await restaurarSesionDesdeDB();
+
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
     sock = makeWASocket({
@@ -335,7 +420,10 @@ async function startBaileys() {
       generateHighQualityLinkPreview: false
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+      await saveCreds();
+      await sincronizarDirectorioADB();
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -370,6 +458,7 @@ async function startBaileys() {
 
         if (isLoggedOut) {
           console.log('[WhatsApp] Limpiando credenciales antiguas para generar nuevo QR...');
+          await borrarSesionEnDB();
           try {
             if (fs.existsSync(authPath)) {
               fs.rmSync(authPath, { recursive: true, force: true });
@@ -398,6 +487,7 @@ async function startBaileys() {
           console.error('\n🚨 [SEGURIDAD SOLDENT] ¡ERROR CRÍTICO!');
           console.error('🚨 Se escaneó el QR con el número personal de la Dra. Pamela (+591 78472875).');
           console.error('🚨 Desvinculando inmediatamente para proteger su WhatsApp personal y agenda...\n');
+          await borrarSesionEnDB();
           try {
             sock.logout();
           } catch (e) {}
@@ -410,6 +500,9 @@ async function startBaileys() {
           setTimeout(startBaileys, 3000);
           return;
         }
+
+        // Sincronizar sesión completa inmediatamente a Supabase
+        await sincronizarDirectorioADB();
 
         lastSecurityWarning = null;
 
@@ -496,6 +589,13 @@ async function startBaileys() {
     setTimeout(startBaileys, 3000);
   }
 }
+
+// Respaldo periódico a Supabase cada 5 minutos si la sesión está conectada
+setInterval(() => {
+  if (isConnected) {
+    sincronizarDirectorioADB().catch(() => {});
+  }
+}, 5 * 60 * 1000);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Soldent WhatsApp Gateway] Servidor HTTP escuchando en http://localhost:${PORT}`);
