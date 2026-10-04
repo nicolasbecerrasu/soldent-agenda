@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import type { Paciente, Tratamiento } from '../types';
-import { X, Calendar, Clock, User, Stethoscope, FileText, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, Clock, User, Stethoscope, CheckCircle2 } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -22,7 +22,11 @@ export const ModalNuevaCita: React.FC<Props> = ({
   initialFecha,
   initialHora,
 }) => {
+  const [modoPaciente, setModoPaciente] = useState<'existente' | 'nuevo'>('existente');
   const [pacienteId, setPacienteId] = useState('');
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoTelefono, setNuevoTelefono] = useState('');
+
   const [tratamientoId, setTratamientoId] = useState('');
   const [fecha, setFecha] = useState(() => initialFecha || new Date().toISOString().split('T')[0]);
   const [hora, setHora] = useState(() => initialHora || '09:00');
@@ -46,7 +50,20 @@ export const ModalNuevaCita: React.FC<Props> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pacienteId || !tratamientoId || !fecha || !hora) {
+
+    if (modoPaciente === 'nuevo') {
+      if (!nuevoNombre.trim()) {
+        setError('Por favor ingresa el nombre del nuevo paciente.');
+        return;
+      }
+    } else {
+      if (!pacienteId) {
+        setError('Por favor selecciona un paciente de la lista.');
+        return;
+      }
+    }
+
+    if (!tratamientoId || !fecha || !hora) {
       setError('Por favor completa todos los campos requeridos.');
       return;
     }
@@ -86,11 +103,23 @@ export const ModalNuevaCita: React.FC<Props> = ({
     try {
       setCargando(true);
       setError(null);
+
+      let idFinalPaciente = pacienteId;
+
+      // Si es un paciente nuevo, crearlo primero
+      if (modoPaciente === 'nuevo') {
+        const nuevoPac = await api.crearPaciente({
+          nombre: nuevoNombre.trim(),
+          telefono: nuevoTelefono.trim() ? nuevoTelefono.trim() : undefined,
+        });
+        idFinalPaciente = nuevoPac.id;
+      }
+
       // Construir timestamp ISO con zona horaria de Bolivia (-04:00)
       const isoInicio = `${fecha}T${hora}:00-04:00`;
 
       await api.crearCita({
-        paciente_id: pacienteId,
+        paciente_id: idFinalPaciente,
         tratamiento_id: tratamientoId,
         inicio: isoInicio,
         motivo: motivo || undefined,
@@ -100,6 +129,9 @@ export const ModalNuevaCita: React.FC<Props> = ({
       setExito('¡Cita agendada y encolada para sincronización!');
       setTimeout(() => {
         setExito(null);
+        setNuevoNombre('');
+        setNuevoTelefono('');
+        setModoPaciente('existente');
         onCitaCreada();
         onClose();
       }, 1200);
@@ -113,54 +145,117 @@ export const ModalNuevaCita: React.FC<Props> = ({
   const selectedTratamiento = tratamientos.find((t) => t.id === tratamientoId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white">
               <Calendar className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-slate-900 text-lg">Agendar Cita en Soldent</h3>
+            <h3 className="font-bold text-slate-900 text-base sm:text-lg">Agendar Cita en Soldent</h3>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 transition-colors"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl">
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-xl">
               {error}
             </div>
           )}
           {exito && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              {exito}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm rounded-xl flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{exito}</span>
             </div>
           )}
 
-          {/* Paciente */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-blue-600" />
-              Paciente
-            </label>
-            <select
-              value={pacienteId}
-              onChange={(e) => setPacienteId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-              required
-            >
-              {pacientes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre} {p.apellidos || ''} ({p.telefono})
-                </option>
-              ))}
-            </select>
+          {/* SELECCIÓN O CREACIÓN DE PACIENTE */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-blue-600" />
+                Paciente
+              </label>
+
+              {/* Selector de Modo */}
+              <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setModoPaciente('existente')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    modoPaciente === 'existente'
+                      ? 'bg-white text-blue-700 shadow-2xs font-bold'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Registrado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoPaciente('nuevo')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    modoPaciente === 'nuevo'
+                      ? 'bg-blue-600 text-white shadow-2xs font-bold'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  + Ingresar Nuevo
+                </button>
+              </div>
+            </div>
+
+            {modoPaciente === 'existente' ? (
+              <select
+                value={pacienteId}
+                onChange={(e) => setPacienteId(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                required={modoPaciente === 'existente'}
+              >
+                {pacientes.map((p) => {
+                  const tieneTel = p.telefono && !p.telefono.startsWith('+59199');
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} {p.apellidos || ''}{tieneTel ? ` (${p.telefono})` : ' (Sin teléfono)'}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <div className="space-y-2.5 p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/80 animate-in fade-in duration-150">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Nombre Completo del Paciente <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoNombre}
+                    onChange={(e) => setNuevoNombre(e.target.value)}
+                    placeholder="Ej: Carmen Salinas"
+                    className="w-full px-3.5 py-2 bg-white rounded-xl border border-blue-300 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    required={modoPaciente === 'nuevo'}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Teléfono / Celular <span className="text-slate-400 font-normal">(Opcional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={nuevoTelefono}
+                    onChange={(e) => setNuevoTelefono(e.target.value)}
+                    placeholder="Ej: 77123456"
+                    className="w-full px-3.5 py-2 bg-white rounded-xl border border-slate-200 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tratamiento */}
@@ -223,7 +318,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
           </div>
 
           {/* Horarios oficiales y atajos */}
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+          <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs">
             <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5 font-medium">
               <span>Lun-Vie: 09:00-12:00 | 15:30-19:30</span>
               <span>Sáb: 09:00-12:00</span>
@@ -235,7 +330,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
                   key={h}
                   type="button"
                   onClick={() => setHora(h)}
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors ${
+                  className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors ${
                     hora === h
                       ? 'bg-blue-600 text-white'
                       : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -249,49 +344,48 @@ export const ModalNuevaCita: React.FC<Props> = ({
 
           {/* Motivo */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              Motivo de la Consulta
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+              Motivo de la Cita (Opcional)
             </label>
             <input
               type="text"
-              placeholder="Ej: Dolor en molar superior, chequeo semestral..."
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej: Dolor en molar superior, limpieza periódica..."
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             />
           </div>
 
           {/* Notas */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              Notas Adicionales
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+              Notas para la Doctora (Opcional)
             </label>
-            <input
-              type="text"
-              placeholder="Notas internas para el doctor..."
+            <textarea
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              placeholder="Notas internas..."
+              rows={2}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden resize-none"
             />
           </div>
 
-          {/* Botones */}
+          {/* Botones de Acción */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+              className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={cargando}
-              className="px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all"
+              className="min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/25 transition-all active:scale-95 flex items-center gap-1.5"
             >
-              {cargando ? 'Guardando...' : 'Confirmar Cita'}
+              <Calendar className="w-4 h-4" />
+              {cargando ? 'Agendando...' : 'Confirmar Cita'}
             </button>
           </div>
         </form>

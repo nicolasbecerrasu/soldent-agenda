@@ -132,7 +132,7 @@ export function App() {
                 setSlotSeleccionado(null);
                 setModalCitaAbierto(true);
               }}
-              className="hidden md:inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/25 transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>+ Nueva Cita</span>
@@ -274,21 +274,6 @@ export function App() {
           </section>
         </div>
       </main>
-
-      {/* ======================================================== */}
-      {/* BOTÓN FLOTANTE (FAB) PARA MÓVIL (iPhone 13) */}
-      {/* ======================================================== */}
-      <button
-        onClick={() => {
-          setSlotSeleccionado(null);
-          setModalCitaAbierto(true);
-        }}
-        className="fixed bottom-20 right-4 z-40 md:hidden bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-4 shadow-xl shadow-blue-600/30 flex items-center gap-2 font-bold text-sm active:scale-90 transition-transform"
-        aria-label="Nueva Cita"
-      >
-        <Plus className="w-5 h-5" />
-        <span>Nueva Cita</span>
-      </button>
 
       {/* ======================================================== */}
       {/* BARRA DE NAVEGACIÓN INFERIOR PARA IPHONE / CELULAR */}
