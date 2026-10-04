@@ -7,7 +7,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 import uvicorn
-from main import SessionLocal, worker_sync_outbox, worker_recordatorios, worker_sync_inverso_google
+from main import SessionLocal, worker_sync_outbox, worker_recordatorios, worker_sync_inverso_google, worker_resumen_turnos_doctora
 
 if sys.platform == "win32":
     try:
@@ -399,6 +399,27 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
                 "¡Que tenga un excelente día!"
             )
             historial.append({"role": "model", "text": msg_confirmacion})
+
+            # NOTIFICACIÓN INMEDIATA A LA DRA. PAMELA (+591 78472875)
+            msg_alerta_doctora = (
+                "🦷 *SOLDENT - Nueva Cita Agendada por Bot*\n\n"
+                f"Estimada Dra. Pamela, un paciente acaba de agendar una consulta a través del asistente de WhatsApp:\n\n"
+                f"👤 *Paciente:* {nombre_cita}\n"
+                f"📱 *Teléfono:* {tel_paciente}\n"
+                f"🗓️ *Fecha y Hora:* {f_dia} a las {f_hora}\n"
+                f"🩺 *Servicio:* Consulta Odontológica\n\n"
+                "✅ Ya se encuentra guardada en su agenda web y sincronizada con Google Calendar."
+            )
+            try:
+                httpx.post(
+                    f"{EVOLUTION_API_URL}/send-message",
+                    json={"number": DOCTORA_TELEFONO, "text": msg_alerta_doctora, "message": msg_alerta_doctora},
+                    timeout=5.0
+                )
+                safe_print(f"✅ [Alerta Doctora] Notificación enviada a la Dra. Pamela ({DOCTORA_TELEFONO}) por nueva cita de {nombre_cita}")
+            except Exception as err_doc:
+                safe_print(f"⚠️ [Alerta Doctora Error] No se pudo enviar notificación a la doctora: {err_doc}")
+
             return msg_confirmacion
 
         elif "ERROR_HORARIO_OCUPADO" in resultado_reserva:
@@ -521,9 +542,11 @@ async def loop_workers_automaticos():
             try:
                 # 1. Sincronizar citas pendientes locales hacia Google Calendar (Outbox)
                 worker_sync_outbox(db)
-                # 2. Enviar recordatorios automáticos de 1 hora
+                # 2. Enviar recordatorios automáticos de 3 horas a pacientes
                 worker_recordatorios(db)
-                # 3. Sincronización Inversa (iPhone / Google Calendar -> Base de Datos)
+                # 3. Resumen de turnos a la Dra. Pamela (20 min antes de abrir en la mañana y tarde)
+                worker_resumen_turnos_doctora(db)
+                # 4. Sincronización Inversa (iPhone / Google Calendar -> Base de Datos)
                 if ciclo % 2 == 0:
                     worker_sync_inverso_google(db)
                 ciclo += 1

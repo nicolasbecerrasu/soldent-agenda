@@ -41,6 +41,7 @@ class Settings:
     RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
     RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
     DOCTORA_PIN: str = os.getenv("DOCTORA_PIN", "1104")
+    DOCTORA_TELEFONO: str = os.getenv("DOCTORA_TELEFONO", "+59178472875")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "soldent_secret_key_pamela_2026")
 
 settings = Settings()
@@ -1203,6 +1204,130 @@ def worker_recordatorios(db: Session):
             db.commit()
         except IntegrityError:
             db.rollback()
+
+ultimo_resumen_manana: Optional[str] = None
+ultimo_resumen_tarde: Optional[str] = None
+
+def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = None) -> Optional[dict]:
+    global ultimo_resumen_manana, ultimo_resumen_tarde
+    tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
+    ahora_bol = datetime.now(tz_bol)
+    hoy = ahora_bol.date()
+    hoy_str = hoy.strftime("%Y-%m-%d")
+    weekday = hoy.weekday()  # 0=Lunes, ..., 5=Sábado, 6=Domingo
+    hora = ahora_bol.hour
+    minuto = ahora_bol.minute
+
+    # Si no es forzado y es domingo, la clínica está cerrada
+    if not forzar_turno and weekday == 6:
+        return None
+
+    if forzar_turno:
+        es_turno_manana = (forzar_turno.lower() in ("manana", "mañana"))
+        es_turno_tarde = not es_turno_manana
+    else:
+        # Turno Mañana: 20 min antes de las 09:00 -> 08:40 (ventana 08:38 a 08:43)
+        es_turno_manana = (weekday <= 5) and (hora == 8 and 38 <= minuto <= 43) and (ultimo_resumen_manana != hoy_str)
+        # Turno Tarde: 20 min antes de las 15:30 -> 15:10 (ventana 15:08 a 15:13)
+        es_turno_tarde = (weekday <= 4) and (hora == 15 and 8 <= minuto <= 13) and (ultimo_resumen_tarde != hoy_str)
+
+    if not (es_turno_manana or es_turno_tarde):
+        return None
+
+    turno_nombre = "Mañana" if es_turno_manana else "Tarde"
+    horario_turno_texto = "09:00 a 12:00" if es_turno_manana else "15:30 a 19:30"
+
+    # Definir ventana del turno en hora de Bolivia
+    if es_turno_manana:
+        dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 9, 0, 0, tzinfo=tz_bol)
+        dt_fin_turno = datetime(hoy.year, hoy.month, hoy.day, 12, 1, 0, tzinfo=tz_bol)
+    else:
+        dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 15, 30, 0, tzinfo=tz_bol)
+        dt_fin_turno = datetime(hoy.year, hoy.month, hoy.day, 19, 31, 0, tzinfo=tz_bol)
+
+    dt_ini_utc = dt_ini_turno.astimezone(timezone.utc)
+    dt_fin_utc = dt_fin_turno.astimezone(timezone.utc)
+
+    # Consultar citas activas del turno
+    citas = db.execute(
+        select(Cita, Paciente, Tratamiento)
+        .join(Paciente, Cita.paciente_id == Paciente.id)
+        .outerjoin(Tratamiento, Cita.tratamiento_id == Tratamiento.id)
+        .where(
+            Cita.estado.in_(["pendiente", "confirmada"]),
+            Cita.inicio >= dt_ini_utc,
+            Cita.inicio < dt_fin_utc
+        )
+        .order_by(Cita.inicio)
+    ).all()
+
+    dias_esp = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    dia_nombre = dias_esp[weekday]
+    fecha_fmt = hoy.strftime("%d/%m/%Y")
+    saludo = "Buenos días" if es_turno_manana else "Buenas tardes"
+
+    if not citas:
+        mensaje = (
+            f"🦷 *SOLDENT - Agenda del Turno {turno_nombre}*\n"
+            f"📅 *{dia_nombre} {fecha_fmt}* • Turno de {horario_turno_texto}\n\n"
+            f"{saludo} Dra. Pamela, le informamos que para este turno de la {turno_nombre.lower()} "
+            f"no tiene pacientes agendados por el momento.\n\n"
+            f"¡Que tenga una excelente jornada de descanso o atención! ✨"
+        )
+    else:
+        lineas = []
+        emojis_num = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        for idx, (cita, paciente, tratamiento) in enumerate(citas):
+            c_ini = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
+            c_fin = cita.fin.astimezone(tz_bol) if cita.fin.tzinfo else cita.fin.replace(tzinfo=timezone.utc).astimezone(tz_bol)
+            h_ini = c_ini.strftime("%H:%M")
+            h_fin = c_fin.strftime("%H:%M")
+            estado_badge = "✅ Confirmada" if cita.estado == "confirmada" else "⏳ Pendiente"
+            trat_nom = tratamiento.nombre if tratamiento else "Consulta Odontológica"
+            num_emoji = emojis_num[idx] if idx < len(emojis_num) else f"• {idx+1}."
+
+            linea = (
+                f"{num_emoji} *{h_ini} - {h_fin}* • {paciente.nombre}\n"
+                f"   📱 {paciente.telefono or 'Sin teléfono registrado'} • {estado_badge}\n"
+                f"   🩺 {trat_nom}"
+            )
+            if cita.notas and cita.notas.strip():
+                linea += f"\n   📝 Nota: {cita.notas.strip()}"
+            lineas.append(linea)
+
+        citas_texto = "\n\n".join(lineas)
+        mensaje = (
+            f"🦷 *SOLDENT - Agenda del Turno {turno_nombre}*\n"
+            f"📅 *{dia_nombre} {fecha_fmt}* • Turno de {horario_turno_texto}\n\n"
+            f"{saludo} Dra. Pamela, este es el resumen de sus pacientes programados para este turno:\n\n"
+            f"{citas_texto}\n\n"
+            f"📊 Total de pacientes: *{len(citas)}*\n\n"
+            f"¡Que tenga una exitosa jornada de atención! ✨"
+        )
+
+    doc_tel = getattr(settings, "DOCTORA_TELEFONO", "+59178472875")
+    try:
+        httpx.post(
+            "http://127.0.0.1:8080/send-message",
+            json={"number": doc_tel, "text": mensaje, "message": mensaje},
+            timeout=8.0
+        )
+        print(f"✅ [Resumen Turno {turno_nombre}] Enviado exitosamente a la Dra. Pamela ({doc_tel})")
+        if not forzar_turno:
+            if es_turno_manana:
+                ultimo_resumen_manana = hoy_str
+            else:
+                ultimo_resumen_tarde = hoy_str
+        return {"ok": True, "turno": turno_nombre, "mensaje": mensaje, "total_pacientes": len(citas)}
+    except Exception as err_envio:
+        print(f"⚠️ [Resumen Turno Error] No se pudo enviar resumen a la Dra. Pamela: {err_envio}")
+        return {"ok": False, "error": str(err_envio)}
+
+@app.post("/api/test/resumen-doctora")
+def test_resumen_doctora(turno: str = "manana", db: Session = Depends(get_db)):
+    """Permite disparar el resumen de la mañana o tarde a la doctora para pruebas."""
+    res = worker_resumen_turnos_doctora(db, forzar_turno=turno)
+    return res or {"ok": False, "mensaje": "No se pudo generar el resumen"}
 
 @app.get("/api/salud")
 def salud(): return {"ok": True, "version": "2.0.0", "tz": settings.TZ_CONSULTORIO}
