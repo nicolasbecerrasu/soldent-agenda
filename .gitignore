@@ -24,6 +24,7 @@ __pycache__/
 
 # Logs y temporales
 *.log
+*.zip
 scratch/
 .system_generated/
 whatsapp-qr.png

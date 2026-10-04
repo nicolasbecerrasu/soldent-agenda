@@ -114,7 +114,7 @@ class Paciente(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nombre = Column(Text, nullable=False)
     apellidos = Column(Text)
-    telefono = Column(Text, nullable=False, unique=True)
+    telefono = Column(Text, nullable=True, unique=True)
     email = Column(Text)
     fecha_nacimiento = Column(Date)
     alertas_medicas = Column(JSON, default=dict)
@@ -234,10 +234,17 @@ def _get_calendar_service():
 class PacienteIn(BaseModel):
     nombre: str
     apellidos: Optional[str] = None
-    telefono: str
+    telefono: Optional[str] = None
     email: Optional[str] = None
     fecha_nacimiento: Optional[datetime] = None
     alertas_medicas: dict = Field(default_factory=dict)
+    notas: Optional[str] = None
+
+class PacienteUpdateIn(BaseModel):
+    nombre: Optional[str] = None
+    apellidos: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
     notas: Optional[str] = None
 
 class CitaIn(BaseModel):
@@ -262,8 +269,8 @@ ESTADOS_VALIDOS = {"pendiente", "confirmada", "cancelada", "atendida", "no_asist
 # =============================================================
 @app.post("/api/pacientes", status_code=status.HTTP_201_CREATED)
 def crear_paciente(data: PacienteIn, db: Session = Depends(get_db)):
-    tel = normalizar_telefono(data.telefono)
-    if db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none():
+    tel = normalizar_telefono(data.telefono) if (data.telefono and data.telefono.strip()) else None
+    if tel and db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none():
         raise HTTPException(409, "Ya existe un paciente con ese teléfono")
     p = Paciente(**data.model_dump(exclude={"telefono"}), telefono=tel)
     db.add(p)
@@ -272,6 +279,32 @@ def crear_paciente(data: PacienteIn, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback(); raise HTTPException(409, "Paciente duplicado")
     return {"id": str(p.id)}
+
+@app.patch("/api/pacientes/{pid}")
+def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = Depends(get_db)):
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, "Paciente no encontrado")
+    if data.telefono is not None:
+        if data.telefono.strip() == "":
+            p.telefono = None
+        else:
+            tel = normalizar_telefono(data.telefono)
+            otro = db.execute(select(Paciente).where(Paciente.telefono == tel, Paciente.id != pid)).scalar_one_or_none()
+            if otro:
+                raise HTTPException(409, "Ya existe otro paciente con ese teléfono")
+            p.telefono = tel
+    if data.nombre is not None and data.nombre.strip():
+        p.nombre = data.nombre.strip()
+    if data.apellidos is not None:
+        p.apellidos = data.apellidos.strip() or None
+    if data.email is not None:
+        p.email = data.email.strip() or None
+    if data.notas is not None:
+        p.notas = data.notas
+    db.commit()
+    db.refresh(p)
+    return {"id": str(p.id), "nombre": p.nombre, "telefono": p.telefono}
 
 @app.get("/api/pacientes")
 def buscar_pacientes(q: str = "", db: Session = Depends(get_db)):
@@ -513,6 +546,21 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
     registrar_auditoria(db, cid, "doctora", "actualizar", antes=antes, despues={"estado": cambios.get("estado", cita.estado), "version": row["version"]})
     db.commit()
     return {"id": str(cid), "version": row["version"], "fin": row["fin"].isoformat()}
+
+@app.delete("/api/citas/{cid}")
+def eliminar_cita(cid: uuid.UUID, db: Session = Depends(get_db)):
+    cita = db.get(Cita, cid)
+    if not cita:
+        raise HTTPException(404, "Cita no encontrada")
+    
+    gid = cita.google_event_id
+    if gid:
+        encolar_outbox(db, cid, "delete", {"google_event_id": gid})
+    
+    registrar_auditoria(db, cid, "doctora", "eliminar", antes={"estado": cita.estado, "inicio": str(cita.inicio)})
+    db.delete(cita)
+    db.commit()
+    return {"ok": True, "id": str(cid)}
 
 # =============================================================
 # 6. ENDPOINT PÚBLICO (WhatsApp Response)
@@ -789,27 +837,30 @@ def worker_sync_inverso_google(db: Session):
                 nombre_paciente = summary[5:].strip()
             elif summary.lower().startswith("consulta "):
                 nombre_paciente = summary[9:].strip()
+
+            descripcion = evento.get("description", "") or ""
+            texto_busqueda = f"{summary} {descripcion}"
+            m_tel = re.search(r"(?:(?:\+?591\s*)?([67]\d{7}))", texto_busqueda)
+            tel_extraido = normalizar_telefono(m_tel.group(0)) if m_tel else None
+
+            # Si el teléfono estaba dentro del título (ej: "Marlerly Vargas 77123456"), limpiamos el nombre
+            if m_tel and m_tel.group(0) in nombre_paciente:
+                nombre_paciente = nombre_paciente.replace(m_tel.group(0), "").strip()
             if not nombre_paciente:
                 nombre_paciente = "Paciente iPhone"
 
-            paciente = db.execute(
-                select(Paciente).where(func.lower(Paciente.nombre) == nombre_paciente.lower())
-            ).scalars().first()
+            paciente = None
+            if tel_extraido:
+                paciente = db.execute(select(Paciente).where(Paciente.telefono == tel_extraido)).scalar_one_or_none()
+            if not paciente:
+                paciente = db.execute(
+                    select(Paciente).where(func.lower(Paciente.nombre) == nombre_paciente.lower())
+                ).scalars().first()
 
             if not paciente:
-                descripcion = evento.get("description", "") or ""
-                m_tel = re.search(r"(\+?591\s?)?([67]\d{7})", descripcion)
-                if m_tel:
-                    tel_extraido = normalizar_telefono(m_tel.group(0))
-                    paciente = db.execute(select(Paciente).where(Paciente.telefono == tel_extraido)).scalar_one_or_none()
-
-            if not paciente:
-                tel_hash = f"+59199{abs(hash(gid)) % 1000000:06d}"
-                while db.execute(select(Paciente).where(Paciente.telefono == tel_hash)).scalar_one_or_none():
-                    tel_hash = f"+59199{abs(hash(gid + str(uuid.uuid4()))) % 1000000:06d}"
                 paciente = Paciente(
                     nombre=nombre_paciente,
-                    telefono=tel_hash,
+                    telefono=tel_extraido,  # None si no hay teléfono, ¡NO inventa números ficticios!
                     notas="Registrado automáticamente desde Google Calendar (iPhone de la Doctora)"
                 )
                 db.add(paciente)

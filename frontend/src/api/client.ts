@@ -1,4 +1,4 @@
-import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload } from '../types';
+import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload } from '../types';
 
 // En desarrollo local con Vite (puerto 5173 o 3000) apunta a http://host:8000/api
 // En producción (Render / Cloud) FastAPI y el Frontend están en el mismo origen, por lo que usa la ruta relativa '/api'
@@ -61,6 +61,18 @@ export const api = {
     return res.json();
   },
 
+  async eliminarCita(id: string): Promise<{ ok: boolean; id: string }> {
+    const url = getFullUrl(`/citas/${id}`);
+    const res = await fetch(url, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al eliminar cita');
+    }
+    return res.json();
+  },
+
   // TRATAMIENTOS
   async getTratamientos(): Promise<Tratamiento[]> {
     const url = getFullUrl('/tratamientos');
@@ -87,6 +99,20 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Error al registrar paciente');
+    }
+    return res.json();
+  },
+
+  async actualizarPaciente(id: string, payload: ActualizarPacientePayload): Promise<Paciente> {
+    const url = getFullUrl(`/pacientes/${id}`);
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al actualizar paciente');
     }
     return res.json();
   },
