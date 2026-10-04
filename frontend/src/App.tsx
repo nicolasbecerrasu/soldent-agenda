@@ -16,7 +16,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Edit2
+  Edit2,
+  Trash2
 } from 'lucide-react';
 
 export function App() {
@@ -26,6 +27,17 @@ export function App() {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [busquedaDirectorio, setBusquedaDirectorio] = useState('');
   const [pacienteParaEditar, setPacienteParaEditar] = useState<Paciente | null>(null);
+  const [idConfirmandoEliminar, setIdConfirmandoEliminar] = useState<string | null>(null);
+
+  const handleEliminarPacienteDirecto = async (pid: string) => {
+    try {
+      await api.eliminarPaciente(pid);
+      setIdConfirmandoEliminar(null);
+      await cargarDatos();
+    } catch (err: any) {
+      alert(`Error al eliminar paciente: ${err.message}`);
+    }
+  };
   
   const [filtroTratamiento, setFiltroTratamiento] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -310,28 +322,57 @@ export function App() {
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => setPacienteParaEditar(p)}
-                                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors active:scale-95 shadow-2xs"
-                                title="Editar datos del paciente"
-                              >
-                                <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                                <span>Editar</span>
-                              </button>
+                            {idConfirmandoEliminar === p.id ? (
+                              <div className="flex items-center gap-1.5 bg-red-50 p-1.5 rounded-xl border border-red-200 self-end sm:self-center shrink-0">
+                                <span className="text-[11px] text-red-700 font-bold px-1">¿Eliminar?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEliminarPacienteDirecto(p.id)}
+                                  className="px-2 py-1 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors active:scale-95"
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIdConfirmandoEliminar(null)}
+                                  className="px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setPacienteParaEditar(p)}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors active:scale-95 shadow-2xs"
+                                  title="Editar datos del paciente"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Editar</span>
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSlotSeleccionado(null);
-                                  setModalCitaAbierto(true);
-                                }}
-                                className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors active:scale-95"
-                              >
-                                + Agendar
-                              </button>
-                            </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIdConfirmandoEliminar(p.id)}
+                                  className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors active:scale-95 shadow-2xs"
+                                  title="Eliminar paciente"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSlotSeleccionado(null);
+                                    setModalCitaAbierto(true);
+                                  }}
+                                  className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors active:scale-95"
+                                >
+                                  + Agendar
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })

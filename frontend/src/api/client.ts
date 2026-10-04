@@ -116,4 +116,16 @@ export const api = {
     }
     return res.json();
   },
+
+  async eliminarPaciente(id: string): Promise<{ ok: boolean; id: string }> {
+    const url = getFullUrl(`/pacientes/${id}`);
+    const res = await fetch(url, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al eliminar paciente');
+    }
+    return res.json();
+  },
 };

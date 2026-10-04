@@ -322,6 +322,30 @@ def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = De
     db.refresh(p)
     return {"id": str(p.id), "nombre": p.nombre, "telefono": p.telefono}
 
+@app.delete("/api/pacientes/{pid}")
+def eliminar_paciente(pid: uuid.UUID, db: Session = Depends(get_db)):
+    paciente = db.get(Paciente, pid)
+    if not paciente:
+        raise HTTPException(404, "Paciente no encontrado")
+
+    # Si tiene citas asociadas, asegurar borrado limpio en Google Calendar y lápidas en auditoría
+    citas = db.execute(select(Cita).where(Cita.paciente_id == pid)).scalars().all()
+    for cita in citas:
+        gid = cita.google_event_id
+        if gid:
+            try:
+                service = _get_calendar_service()
+                service.events().delete(calendarId=settings.CALENDAR_ID, eventId=gid).execute()
+                print(f"🗑️ [Google Calendar] Cita vinculada {cita.id} (evento {gid}) eliminada.")
+            except Exception:
+                encolar_outbox(db, cita.id, "delete", {"google_event_id": gid})
+        registrar_auditoria(db, cita.id, "doctora", "eliminar", antes={"estado": cita.estado, "inicio": str(cita.inicio), "google_event_id": gid})
+        db.delete(cita)
+
+    db.delete(paciente)
+    db.commit()
+    return {"ok": True, "id": str(pid)}
+
 @app.get("/api/pacientes")
 def buscar_pacientes(q: str = "", db: Session = Depends(get_db)):
     stmt = select(Paciente)

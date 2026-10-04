@@ -9,7 +9,8 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
-  Save
+  Save,
+  Trash2
 } from 'lucide-react';
 
 interface Props {
@@ -31,6 +32,8 @@ export const ModalEditarPaciente: React.FC<Props> = ({
   const [email, setEmail] = useState('');
   const [notas, setNotas] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
 
@@ -42,10 +45,31 @@ export const ModalEditarPaciente: React.FC<Props> = ({
       setTelefono(tel);
       setEmail(paciente.email || '');
       setNotas(paciente.notas || '');
+      setConfirmandoEliminar(false);
       setError(null);
       setExito(null);
     }
   }, [paciente, isOpen]);
+
+  const handleEliminar = async () => {
+    if (!paciente) return;
+    try {
+      setEliminando(true);
+      setError(null);
+      await api.eliminarPaciente(paciente.id);
+      setExito('¡Paciente eliminado con éxito!');
+      setTimeout(() => {
+        setExito(null);
+        setConfirmandoEliminar(false);
+        onPacienteActualizado();
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      setError(err.message || 'Error al eliminar paciente');
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   if (!isOpen || !paciente) return null;
 
@@ -200,22 +224,57 @@ export const ModalEditarPaciente: React.FC<Props> = ({
           </div>
 
           {/* Botones */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={cargando}
-              className="min-h-[44px] px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/25 transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {cargando ? 'Guardando...' : 'Guardar Cambios'}
-            </button>
+          <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+            <div>
+              {!confirmandoEliminar ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoEliminar(true)}
+                  className="min-h-[44px] px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-1.5"
+                  title="Eliminar paciente permanentemente"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Eliminar</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-red-50 p-1.5 rounded-xl border border-red-200">
+                  <span className="text-[11px] text-red-700 font-bold px-1">¿Eliminar?</span>
+                  <button
+                    type="button"
+                    onClick={handleEliminar}
+                    disabled={eliminando}
+                    className="px-2.5 py-1 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  >
+                    {eliminando ? '...' : 'Sí'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoEliminar(false)}
+                    className="px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={cargando}
+                className="min-h-[44px] px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/25 transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {cargando ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
