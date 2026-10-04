@@ -7,13 +7,16 @@ import { ListaCitas } from './components/ListaCitas';
 import { FormNuevoPaciente } from './components/FormNuevoPaciente';
 import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
+import { ModalEditarPaciente } from './components/ModalEditarPaciente';
 import { IosInstallBanner } from './components/IosInstallBanner';
 import {
   Calendar,
   List,
   Users,
   Plus,
-  RefreshCw
+  RefreshCw,
+  Search,
+  Edit2
 } from 'lucide-react';
 
 export function App() {
@@ -21,6 +24,8 @@ export function App() {
   const [citas, setCitas] = useState<Cita[]>([]);
   const [tratamientos, setTratamientos] = useState<Tratamiento[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [busquedaDirectorio, setBusquedaDirectorio] = useState('');
+  const [pacienteParaEditar, setPacienteParaEditar] = useState<Paciente | null>(null);
   
   const [filtroTratamiento, setFiltroTratamiento] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -225,53 +230,116 @@ export function App() {
               </div>
             )}
 
-            {tabActiva === 'pacientes' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-                <div className="lg:col-span-1">
-                  <FormNuevoPaciente onPacienteCreado={cargarDatos} />
-                </div>
-                <div className="lg:col-span-2 space-y-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-slate-900 text-sm">Directorio de Pacientes</h3>
-                    <span className="text-xs text-slate-500">{pacientes.length} registrados</span>
-                  </div>
+            {tabActiva === 'pacientes' && (() => {
+              const q = busquedaDirectorio.trim().toLowerCase();
+              const pacientesFiltrados = pacientes.filter((p) => {
+                if (!q) return true;
+                const full = `${p.nombre} ${p.apellidos || ''}`.toLowerCase();
+                const tel = (p.telefono || '').toLowerCase();
+                return full.includes(q) || tel.includes(q);
+              });
 
-                  {pacientes.map((p) => {
-                    const esDummy = !p.telefono || p.telefono.startsWith('+59199');
-                    return (
-                      <div
-                        key={p.id}
-                        className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3"
-                      >
-                        <div className="space-y-1">
-                          <p className="font-semibold text-slate-900 text-sm">
-                            {p.nombre} {p.apellidos || ''}
-                          </p>
-                          <p className="text-xs text-slate-500 flex items-center gap-2">
-                            {esDummy ? (
-                              <span className="text-amber-600 font-medium italic">Sin teléfono</span>
-                            ) : (
-                              <span className="font-mono">{p.telefono}</span>
-                            )}
-                            {p.email && <span>• {p.email}</span>}
-                          </p>
-                          {p.notas && <p className="text-xs text-slate-400 italic">{p.notas}</p>}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setSlotSeleccionado(null);
-                            setModalCitaAbierto(true);
-                          }}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors shrink-0 active:scale-95"
-                        >
-                          + Agendar
-                        </button>
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+                  <div className="lg:col-span-1">
+                    <FormNuevoPaciente onPacienteCreado={cargarDatos} />
+                  </div>
+                  <div className="lg:col-span-2 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200/80">
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-sm sm:text-base">Directorio de Pacientes</h3>
+                        <p className="text-xs text-slate-500">
+                          {pacientesFiltrados.length} de {pacientes.length} pacientes
+                        </p>
                       </div>
-                    );
-                  })}
+
+                      {/* Buscador de Pacientes en Tiempo Real */}
+                      <div className="relative w-full sm:w-64">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          value={busquedaDirectorio}
+                          onChange={(e) => setBusquedaDirectorio(e.target.value)}
+                          placeholder="Buscar nombre o teléfono..."
+                          className="w-full pl-9 pr-3 py-1.5 bg-white rounded-xl border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                        />
+                        {busquedaDirectorio && (
+                          <button
+                            type="button"
+                            onClick={() => setBusquedaDirectorio('')}
+                            className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {pacientesFiltrados.length === 0 ? (
+                      <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500 text-xs">
+                        No se encontraron pacientes que coincidan con "{busquedaDirectorio}".
+                      </div>
+                    ) : (
+                      pacientesFiltrados.map((p) => {
+                        const esDummy = !p.telefono || p.telefono.startsWith('+59199');
+                        return (
+                          <div
+                            key={p.id}
+                            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-300 transition-colors"
+                          >
+                            <div className="space-y-1">
+                              <p className="font-bold text-slate-900 text-sm">
+                                {p.nombre} {p.apellidos || ''}
+                              </p>
+                              <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
+                                {esDummy ? (
+                                  <span className="text-amber-600 font-medium italic bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/60">
+                                    Sin teléfono registrado
+                                  </span>
+                                ) : (
+                                  <span className="font-mono font-medium text-slate-700 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200/80">
+                                    {p.telefono}
+                                  </span>
+                                )}
+                                {p.email && <span>• {p.email}</span>}
+                              </div>
+                              {p.notas && (
+                                <p className="text-xs text-slate-400 italic bg-slate-50/60 p-1.5 rounded-lg border border-slate-100">
+                                  {p.notas}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setPacienteParaEditar(p)}
+                                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors active:scale-95 shadow-2xs"
+                                title="Editar datos del paciente"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSlotSeleccionado(null);
+                                  setModalCitaAbierto(true);
+                                }}
+                                className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors active:scale-95"
+                              >
+                                + Agendar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </section>
         </div>
       </main>
@@ -349,6 +417,14 @@ export function App() {
           setCitas((prev) => prev.filter((c) => c.id !== citaId));
           cargarDatos();
         }}
+        onPacienteActualizado={cargarDatos}
+      />
+
+      {/* Modal Editar Paciente */}
+      <ModalEditarPaciente
+        paciente={pacienteParaEditar}
+        isOpen={Boolean(pacienteParaEditar)}
+        onClose={() => setPacienteParaEditar(null)}
         onPacienteActualizado={cargarDatos}
       />
 

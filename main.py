@@ -324,11 +324,28 @@ def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = De
 
 @app.get("/api/pacientes")
 def buscar_pacientes(q: str = "", db: Session = Depends(get_db)):
-    like = f"%{q}%"
-    rows = db.execute(select(Paciente).where(
-        (Paciente.nombre.ilike(like)) | (func.coalesce(Paciente.apellidos, "").ilike(like)) | (Paciente.telefono.ilike(like))
-    ).limit(10)).scalars().all()
-    return [{"id": str(r.id), "nombre": r.nombre, "apellidos": r.apellidos, "telefono": r.telefono, "alertas": r.alertas_medicas} for r in rows]
+    stmt = select(Paciente)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            (Paciente.nombre.ilike(like)) | 
+            (func.coalesce(Paciente.apellidos, "").ilike(like)) | 
+            (func.coalesce(Paciente.telefono, "").ilike(like))
+        )
+    stmt = stmt.order_by(Paciente.nombre.asc())
+    rows = db.execute(stmt).scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "nombre": r.nombre,
+            "apellidos": r.apellidos,
+            "telefono": r.telefono,
+            "email": r.email,
+            "notas": r.notas,
+            "alertas": r.alertas_medicas
+        }
+        for r in rows
+    ]
 
 @app.get("/api/tratamientos")
 def listar_tratamientos(db: Session = Depends(get_db)):
