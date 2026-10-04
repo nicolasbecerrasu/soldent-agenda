@@ -7,6 +7,7 @@ import { ListaCitas } from './components/ListaCitas';
 import { FormNuevoPaciente } from './components/FormNuevoPaciente';
 import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
+import { IosInstallBanner } from './components/IosInstallBanner';
 import {
   Calendar,
   List,
@@ -349,6 +350,9 @@ export function App() {
         }}
         onPacienteActualizado={cargarDatos}
       />
+
+      {/* Aviso de Instalación PWA en iPhone (iOS Banner) */}
+      <IosInstallBanner />
     </div>
   );
 }
