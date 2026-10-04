@@ -48,6 +48,8 @@ export interface CrearCitaPayload {
   paciente_id: string;
   tratamiento_id: string;
   inicio: string; // ISO 8601 string
+  fin?: string;
+  duracion_min?: number;
   motivo?: string;
   notas?: string;
 }

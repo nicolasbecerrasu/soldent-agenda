@@ -9,4 +9,15 @@ body {
   background-color: #f8fafc;
   color: #0f172a;
   min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
 }
+
+/* Soporte para Zona Segura en iPhone (Notch, Dynamic Island y Barra de Inicio) */
+header.navbar-top {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+.safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+

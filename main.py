@@ -251,6 +251,8 @@ class CitaIn(BaseModel):
     paciente_id: uuid.UUID
     tratamiento_id: uuid.UUID
     inicio: datetime
+    duracion_min: Optional[int] = None
+    fin: Optional[datetime] = None
     motivo: Optional[str] = None
     notas: Optional[str] = None
 
@@ -436,7 +438,8 @@ def validar_horario_soldent(dt_inicio: datetime, dt_fin: datetime):
 def crear_cita(data: CitaIn, db: Session = Depends(get_db)):
     trat = db.get(Tratamiento, data.tratamiento_id)
     if not trat: raise HTTPException(404, "Tratamiento no encontrado")
-    fin = data.inicio + timedelta(minutes=trat.duracion_min)
+    duracion = data.duracion_min if (data.duracion_min and data.duracion_min > 0) else trat.duracion_min
+    fin = data.fin if data.fin else (data.inicio + timedelta(minutes=duracion))
     validar_horario_soldent(data.inicio, fin)
     paciente = db.get(Paciente, data.paciente_id)
     if not paciente: raise HTTPException(404, "Paciente no encontrado")

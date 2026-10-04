@@ -211,10 +211,10 @@ export const ModalDetalleCita: React.FC<Props> = ({
                 )}
               </div>
 
-              {cita.motivo && (
+              {cita.notas && (
                 <div className="text-xs text-slate-600 pt-2 border-t border-slate-100">
-                  <span className="font-semibold text-slate-700">Motivo: </span>
-                  {cita.motivo}
+                  <span className="font-semibold text-slate-700">Notas: </span>
+                  {cita.notas}
                 </div>
               )}
             </div>

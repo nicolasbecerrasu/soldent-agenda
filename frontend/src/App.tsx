@@ -77,25 +77,25 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans pb-20 md:pb-6">
-      {/* Header Superior con Logo Oficial */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+      {/* Header Superior con Logo Oficial y Soporte para Safe Area (iOS Dynamic Island / Notch) */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs navbar-top">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-14 sm:h-20 flex items-center justify-between gap-2 overflow-x-hidden">
           {/* Logo y Nombre Oficial */}
-          <div className="flex items-center gap-2.5 sm:gap-3.5">
-            <div className="h-11 sm:h-14 w-auto flex items-center justify-center p-1 bg-white rounded-xl border border-slate-100 shadow-2xs overflow-hidden">
+          <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+            <div className="h-9 sm:h-14 w-auto flex items-center justify-center p-1 bg-white rounded-xl border border-slate-100 shadow-2xs overflow-hidden shrink-0">
               <img
                 src="/images/logo-soldent.jpeg"
                 alt="Logo Oficial Soldent"
-                className="h-9 sm:h-12 w-auto object-contain"
+                className="h-7 sm:h-12 w-auto object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}
               />
             </div>
-            <div>
+            <div className="truncate">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">SOLDENT</span>
-                <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
+                <span className="text-base sm:text-xl font-extrabold tracking-tight text-slate-900">SOLDENT</span>
+                <span className="hidden sm:inline-flex text-[9px] sm:text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
                   Agenda
                 </span>
               </div>
@@ -106,7 +106,7 @@ export function App() {
           </div>
 
           {/* Estado de sincronización y Acciones */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div className="hidden lg:flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -127,12 +127,13 @@ export function App() {
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
             </button>
 
+            {/* En Desktop: Botón + Nueva Cita */}
             <button
               onClick={() => {
                 setSlotSeleccionado(null);
                 setModalCitaAbierto(true);
               }}
-              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all active:scale-95 shrink-0"
+              className="hidden md:inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>+ Nueva Cita</span>
@@ -278,10 +279,10 @@ export function App() {
       {/* ======================================================== */}
       {/* BARRA DE NAVEGACIÓN INFERIOR PARA IPHONE / CELULAR */}
       {/* ======================================================== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-4 py-1.5 flex items-center justify-around md:hidden shadow-lg pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-3 py-1.5 flex items-center justify-between md:hidden shadow-lg safe-bottom">
         <button
           onClick={() => setTabActiva('semanal')}
-          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
             tabActiva === 'semanal' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -291,7 +292,7 @@ export function App() {
 
         <button
           onClick={() => setTabActiva('lista')}
-          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
             tabActiva === 'lista' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -299,9 +300,24 @@ export function App() {
           <span className="text-[10px]">Citas</span>
         </button>
 
+        {/* Botón Central Destacado: + Nueva Cita (Ergonómico para pulgar en iPhone) */}
+        <button
+          onClick={() => {
+            setSlotSeleccionado(null);
+            setModalCitaAbierto(true);
+          }}
+          className="mx-2 flex flex-col items-center justify-center -mt-6 group focus:outline-hidden"
+          title="Crear Nueva Cita"
+        >
+          <div className="w-13 h-13 rounded-full bg-blue-600 group-hover:bg-blue-700 text-white shadow-xl shadow-blue-500/40 flex items-center justify-center transition-all active:scale-90 border-[3px] border-white">
+            <Plus className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <span className="text-[10px] font-bold text-blue-600 mt-0.5">Nueva Cita</span>
+        </button>
+
         <button
           onClick={() => setTabActiva('pacientes')}
-          className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
             tabActiva === 'pacientes' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
