@@ -14,8 +14,11 @@ import {
   Trash2,
   Edit2,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Receipt,
+  Star
 } from 'lucide-react';
+import { ModalPagosPaciente } from './ModalPagosPaciente';
 
 interface Props {
   cita: Cita | null;
@@ -40,6 +43,10 @@ export const ModalDetalleCita: React.FC<Props> = ({
   const [telefonoInput, setTelefonoInput] = useState(cita.paciente.telefono || '');
   const [guardandoTel, setGuardandoTel] = useState(false);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [modalPagosAbierto, setModalPagosAbierto] = useState(false);
+  const [enviandoResena, setEnviandoResena] = useState(false);
+  const [resenaEnviada, setResenaEnviada] = useState(false);
+  const [mensajeResena, setMensajeResena] = useState<string | null>(null);
 
   const dInicio = new Date(cita.inicio);
   const dFin = new Date(cita.fin);
@@ -87,6 +94,25 @@ export const ModalDetalleCita: React.FC<Props> = ({
       setErrorAccion(err.message || 'Error al actualizar el teléfono');
     } finally {
       setGuardandoTel(false);
+    }
+  };
+
+  const handlePedirResena = async () => {
+    if (esTelDummy) {
+      setErrorAccion('El paciente no tiene un número de teléfono válido para WhatsApp.');
+      return;
+    }
+    try {
+      setEnviandoResena(true);
+      setErrorAccion(null);
+      await api.pedirResenaCitaWhatsApp(cita.id);
+      setResenaEnviada(true);
+      setMensajeResena('¡Solicitud de 5⭐ enviada a WhatsApp!');
+      setTimeout(() => setMensajeResena(null), 5000);
+    } catch (err: any) {
+      setErrorAccion(err.message || 'Error al enviar solicitud de reseña');
+    } finally {
+      setEnviandoResena(false);
     }
   };
 
@@ -251,6 +277,48 @@ export const ModalDetalleCita: React.FC<Props> = ({
             )}
           </div>
 
+          {/* GESTIÓN DE PAGOS Y RESEÑAS GOOGLE */}
+          <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Gestión Clínica & Fidelización
+              </span>
+              {mensajeResena && (
+                <span className="text-[11px] font-bold text-emerald-600 animate-in fade-in">
+                  {mensajeResena}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalPagosAbierto(true)}
+                className="min-h-[42px] px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <Receipt className="w-4 h-4 text-emerald-600" />
+                <span>Pagos y Saldos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePedirResena}
+                disabled={enviandoResena || esTelDummy}
+                className={`min-h-[42px] px-3 py-2 border rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 ${
+                  resenaEnviada
+                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                    : esTelDummy
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                    : 'bg-white hover:bg-amber-50 text-amber-700 border-amber-200'
+                }`}
+                title={esTelDummy ? 'El paciente no tiene teléfono registrado' : 'Enviar invitación de 5 estrellas en Google Maps'}
+              >
+                <Star className={`w-4 h-4 ${resenaEnviada ? 'fill-amber-500 text-amber-500' : 'text-amber-500'}`} />
+                <span>{enviandoResena ? 'Enviando...' : resenaEnviada ? 'Reseña Pedida' : 'Pedir Reseña 5⭐'}</span>
+              </button>
+            </div>
+          </div>
+
           {/* Acciones de Estado */}
           <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100">
             {cita.estado !== 'confirmada' && (
@@ -330,6 +398,16 @@ export const ModalDetalleCita: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal Pagos del Paciente */}
+      {modalPagosAbierto && (
+        <ModalPagosPaciente
+          paciente={cita.paciente}
+          citaId={cita.id}
+          isOpen={modalPagosAbierto}
+          onClose={() => setModalPagosAbierto(false)}
+        />
+      )}
     </div>
   );
 };

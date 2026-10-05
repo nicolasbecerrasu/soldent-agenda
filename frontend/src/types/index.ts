@@ -70,3 +70,36 @@ export interface ActualizarPacientePayload {
   email?: string;
   notas?: string;
 }
+
+export interface Pago {
+  id: string;
+  paciente_id: string;
+  cita_id?: string | null;
+  monto_total: number;
+  monto_pagado: number;
+  saldo_pendiente: number;
+  metodo_pago: 'efectivo' | 'qr' | 'transferencia' | 'tarjeta';
+  concepto: string;
+  notas?: string | null;
+  fecha_pago?: string | null;
+}
+
+export interface ResumenPagosPaciente {
+  paciente_id: string;
+  total_tratamientos: number;
+  total_pagado: number;
+  saldo_pendiente: number;
+  pagos: Pago[];
+}
+
+export interface CrearPagoPayload {
+  paciente_id: string;
+  cita_id?: string | null;
+  monto_total: number;
+  monto_pagado: number;
+  metodo_pago: string;
+  concepto: string;
+  notas?: string;
+  fecha_pago?: string;
+}
+

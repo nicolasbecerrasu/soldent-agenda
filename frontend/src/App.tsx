@@ -8,6 +8,7 @@ import { FormNuevoPaciente } from './components/FormNuevoPaciente';
 import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
 import { ModalEditarPaciente } from './components/ModalEditarPaciente';
+import { ModalPagosPaciente } from './components/ModalPagosPaciente';
 import { IosInstallBanner } from './components/IosInstallBanner';
 import { PantallaPin } from './components/PantallaPin';
 import {
@@ -19,7 +20,8 @@ import {
   Search,
   Edit2,
   Trash2,
-  Lock
+  Lock,
+  Receipt
 } from 'lucide-react';
 
 export function App() {
@@ -30,6 +32,7 @@ export function App() {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [busquedaDirectorio, setBusquedaDirectorio] = useState('');
   const [pacienteParaEditar, setPacienteParaEditar] = useState<Paciente | null>(null);
+  const [pacienteParaPagos, setPacienteParaPagos] = useState<Paciente | null>(null);
   const [idConfirmandoEliminar, setIdConfirmandoEliminar] = useState<string | null>(null);
 
   const handleEliminarPacienteDirecto = async (pid: string) => {
@@ -398,6 +401,16 @@ export function App() {
                               <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                                 <button
                                   type="button"
+                                  onClick={() => setPacienteParaPagos(p)}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 transition-colors active:scale-95 shadow-2xs"
+                                  title="Ver y registrar pagos del paciente"
+                                >
+                                  <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Pagos</span>
+                                </button>
+
+                                <button
+                                  type="button"
                                   onClick={() => setPacienteParaEditar(p)}
                                   className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors active:scale-95 shadow-2xs"
                                   title="Editar datos del paciente"
@@ -521,6 +534,13 @@ export function App() {
         isOpen={Boolean(pacienteParaEditar)}
         onClose={() => setPacienteParaEditar(null)}
         onPacienteActualizado={cargarDatos}
+      />
+
+      {/* Modal Pagos del Paciente */}
+      <ModalPagosPaciente
+        paciente={pacienteParaPagos}
+        isOpen={Boolean(pacienteParaPagos)}
+        onClose={() => setPacienteParaPagos(null)}
       />
 
       {/* Aviso de Instalación PWA en iPhone (iOS Banner) */}

@@ -1,4 +1,4 @@
-import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload } from '../types';
+import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload, ResumenPagosPaciente, CrearPagoPayload } from '../types';
 
 // En desarrollo local con Vite (puerto 5173 o 3000) apunta a http://host:8000/api
 // En producción (Render / Cloud) FastAPI y el Frontend están en el mismo origen, por lo que usa la ruta relativa '/api'
@@ -225,6 +225,68 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Error al eliminar paciente');
+    }
+    return res.json();
+  },
+
+  // PAGOS Y SALDOS
+  async getPagosPaciente(pacienteId: string): Promise<ResumenPagosPaciente> {
+    const url = getFullUrl(`/pacientes/${pacienteId}/pagos`);
+    const res = await authFetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al obtener pagos del paciente');
+    }
+    return res.json();
+  },
+
+  async crearPago(payload: CrearPagoPayload): Promise<{ ok: boolean; id: string; saldo_pendiente: number }> {
+    const url = getFullUrl('/pagos');
+    const res = await authFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al registrar pago');
+    }
+    return res.json();
+  },
+
+  async eliminarPago(pagoId: string): Promise<{ ok: boolean; mensaje: string }> {
+    const url = getFullUrl(`/pagos/${pagoId}`);
+    const res = await authFetch(url, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al eliminar pago');
+    }
+    return res.json();
+  },
+
+  async compartirEstadoCuentaWhatsApp(pacienteId: string): Promise<{ ok: boolean; enviado: boolean; mensaje?: string; error?: string }> {
+    const url = getFullUrl(`/pacientes/${pacienteId}/compartir-estado-cuenta`);
+    const res = await authFetch(url, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al compartir estado de cuenta por WhatsApp');
+    }
+    return res.json();
+  },
+
+  // RESEÑAS GOOGLE MAPS
+  async pedirResenaCitaWhatsApp(citaId: string): Promise<{ ok: boolean; enviado: boolean; mensaje?: string; error?: string }> {
+    const url = getFullUrl(`/citas/${citaId}/pedir-resena`);
+    const res = await authFetch(url, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al enviar solicitud de reseña por WhatsApp');
     }
     return res.json();
   },

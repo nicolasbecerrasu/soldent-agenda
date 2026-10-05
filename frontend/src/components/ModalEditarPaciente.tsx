@@ -10,8 +10,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Save,
-  Trash2
+  Trash2,
+  Receipt
 } from 'lucide-react';
+import { ModalPagosPaciente } from './ModalPagosPaciente';
 
 interface Props {
   paciente: Paciente | null;
@@ -36,6 +38,7 @@ export const ModalEditarPaciente: React.FC<Props> = ({
   const [eliminando, setEliminando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
+  const [modalPagosAbierto, setModalPagosAbierto] = useState(false);
 
   useEffect(() => {
     if (paciente) {
@@ -223,6 +226,18 @@ export const ModalEditarPaciente: React.FC<Props> = ({
             </div>
           </div>
 
+          {/* Acceso directo a Pagos y Saldos */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setModalPagosAbierto(true)}
+              className="w-full min-h-[42px] px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-98 shadow-2xs"
+            >
+              <Receipt className="w-4 h-4 text-emerald-600" />
+              <span>Ver y Registrar Pagos de este Paciente</span>
+            </button>
+          </div>
+
           {/* Botones */}
           <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
             <div>
@@ -278,6 +293,15 @@ export const ModalEditarPaciente: React.FC<Props> = ({
           </div>
         </form>
       </div>
+
+      {/* Modal Pagos del Paciente */}
+      {modalPagosAbierto && (
+        <ModalPagosPaciente
+          paciente={paciente}
+          isOpen={modalPagosAbierto}
+          onClose={() => setModalPagosAbierto(false)}
+        />
+      )}
     </div>
   );
 };
