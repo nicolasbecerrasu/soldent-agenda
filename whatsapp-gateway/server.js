@@ -549,13 +549,13 @@ async function startBaileys() {
         // Resolve real phone if it is an LID
         const resolvedPhone = remoteJid.includes('@lid') ? resolveLidToPhone(remoteJid) : remoteJid;
 
-        // SEGURIDAD: Descartar si el mensaje proviene del número de la Dra. Pamela (78472875)
-        if (remoteJid.includes('78472875') || (resolvedPhone && resolvedPhone.includes('78472875'))) {
-          console.log(`[WhatsApp IN] Mensaje de la Dra. Pamela (+591 78472875) detectado. El bot NO responde a la doctora.`);
-          continue;
+        // Detección de la Dra. Pamela (78472875)
+        const isDoctor = remoteJid.includes('78472875') || (resolvedPhone && resolvedPhone.includes('78472875'));
+        if (isDoctor) {
+          console.log(`[WhatsApp IN] 👩‍⚕️ Mensaje de la Dra. Pamela (+591 78472875) recibido: "${text.slice(0, 45)}" -> Asistente Personal.`);
+        } else {
+          console.log(`[WhatsApp IN] De ${pushName} (${remoteJid} -> ${resolvedPhone}): ${text}`);
         }
-
-        console.log(`[WhatsApp IN] De ${pushName} (${remoteJid} -> ${resolvedPhone}): ${text}`);
 
         // Forward to Python bot (asynchronously via HTTP POST)
         try {
@@ -563,7 +563,8 @@ async function startBaileys() {
             from: remoteJid,
             resolvedPhone: resolvedPhone,
             phone: (resolvedPhone || remoteJid).replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, ''),
-            name: pushName,
+            name: isDoctor ? 'Dra. Pamela Pinto Suárez' : pushName,
+            isDoctor: isDoctor,
             text: text
           });
 
