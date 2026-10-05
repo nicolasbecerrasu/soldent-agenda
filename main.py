@@ -1329,6 +1329,45 @@ def test_resumen_doctora(turno: str = "manana", db: Session = Depends(get_db)):
     res = worker_resumen_turnos_doctora(db, forzar_turno=turno)
     return res or {"ok": False, "mensaje": "No se pudo generar el resumen"}
 
+@app.get("/api/saludar-doctora")
+@app.post("/api/saludar-doctora")
+async def api_saludar_doctora():
+    """Envía un saludo formal y bienvenida a la Dra. Pamela de parte de su bot asistente."""
+    saludo = (
+        "👋 ¡Buenas noches, Dra. Pamela!\n\n"
+        "Soy su Asistente Virtual de *SOLDENT*. Ya me encuentro 100% activo y conectado a su servicio.\n\n"
+        "Estoy a su total disposición para lo que necesite. Puede consultarme en cualquier momento:\n"
+        "• 📅 *«¿Qué citas tengo hoy (o mañana)?»*\n"
+        "• ⏰ *«Horarios libres de mañana»* (se los enviaré con el formato listo para reenviar a sus pacientes)\n"
+        "• 👤 *«¿Quiénes ya confirmaron para mañana?»*\n"
+        "• 📝 *«Agéndame a [Nombre] el [Día] a las [Hora]»*\n"
+        "• 🔒 *«Bloquéame de [Hora] a [Hora] por cirugía o trámite»*\n\n"
+        "¿En qué le puedo colaborar hoy, doctora? ✨"
+    )
+    doc_tel = getattr(settings, "DOCTORA_TELEFONO", "+59178472875")
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post("http://127.0.0.1:8080/send-message", json={"number": doc_tel, "text": saludo, "message": saludo})
+            return {"ok": True, "enviado": True, "respuesta_gateway": resp.json()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/api/enviar-mensaje")
+async def api_enviar_mensaje(req: Request):
+    """Permite enviar mensajes personalizados de WhatsApp."""
+    data = await req.json()
+    num = data.get("number") or data.get("phone") or "+59178472875"
+    texto = data.get("text") or data.get("message") or ""
+    if not texto:
+        raise HTTPException(status_code=400, detail="El campo 'text' es requerido")
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post("http://127.0.0.1:8080/send-message", json={"number": num, "text": texto, "message": texto})
+            return resp.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/salud")
 def salud(): return {"ok": True, "version": "2.0.0", "tz": settings.TZ_CONSULTORIO}
 
