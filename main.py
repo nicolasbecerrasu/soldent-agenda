@@ -967,22 +967,26 @@ def worker_sync_inverso_google(db: Session):
         return
 
     ahora_utc = datetime.now(timezone.utc)
-    tiempo_limite = (ahora_utc - timedelta(days=7)).isoformat()
+    time_min = (ahora_utc - timedelta(days=30)).isoformat()
+    time_max = (ahora_utc + timedelta(days=60)).isoformat()
 
     try:
         try:
             res = service.events().list(
                 calendarId=settings.CALENDAR_ID,
-                updatedMin=tiempo_limite,
-                showDeleted=True,
-                singleEvents=False,
-                maxResults=100
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                orderBy="startTime",
+                maxResults=250
             ).execute()
         except Exception:
             res = service.events().list(
                 calendarId=settings.CALENDAR_ID,
-                updatedMin=tiempo_limite,
-                maxResults=100
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                maxResults=250
             ).execute()
 
         eventos = res.get("items", [])
@@ -1036,6 +1040,8 @@ def worker_sync_inverso_google(db: Session):
                 dt_fin = dt_inicio + timedelta(minutes=30)
 
             summary = (evento.get("summary") or "Consulta Dra. Pamela").strip()
+            if summary in ("9⁹99999", "Día del Trabajo", "FERIADO") or "cumpleaño" in summary.lower():
+                continue
 
             # 3. Cita existente: Actualizar horario si fue reprogramada en el iPhone
             if cita:
