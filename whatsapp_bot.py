@@ -253,24 +253,55 @@ def construir_prompt_sistema(tel_paciente: str) -> str:
     fecha_actual_legible = f"{dia_nombre} {ahora.day}/{ahora.month}/{ahora.year}, hora actual: {ahora.strftime('%H:%M')} (Bolivia)"
     fecha_actual_iso = ahora.strftime("%Y-%m-%d")
 
-    # Resumen de citas ocupadas próximas
-    citas_proximas = []
-    try:
-        r = httpx.get(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, timeout=4.0)
-        if r.status_code == 200:
-            for c in r.json():
-                if (c.get("estado") or "").lower() in ("pendiente", "confirmada"):
-                    c_ini_str = c.get("inicio", "")
-                    c_fin_str = c.get("fin", "")
-                    if c_ini_str and c_fin_str:
-                        c_ini = datetime.fromisoformat(c_ini_str.replace("Z", "+00:00")).astimezone(tz_bolivia)
-                        c_fin = datetime.fromisoformat(c_fin_str.replace("Z", "+00:00")).astimezone(tz_bolivia)
-                        if ahora - timedelta(hours=2) <= c_ini <= ahora + timedelta(days=5):
-                            citas_proximas.append(f"{c_ini.strftime('%d/%m')} de {c_ini.strftime('%H:%M')} a {c_fin.strftime('%H:%M')}")
-    except Exception:
-        pass
+    tel_limpio = re.sub(r"\D", "", str(tel_paciente or ""))
+    tel_8 = tel_limpio[-8:] if len(tel_limpio) >= 8 else tel_limpio
 
-    ocupadas_texto = "; ".join(citas_proximas[:8]) if citas_proximas else "Sin turnos ocupados próximos"
+    citas_este_paciente = []
+    citas_ocupadas_otros = []
+
+    try:
+        from main import SessionLocal, Cita, Paciente
+        db = SessionLocal()
+        try:
+            rows = db.query(Cita, Paciente).join(Paciente, Cita.paciente_id == Paciente.id).filter(
+                Cita.estado.in_(["pendiente", "confirmada"])
+            ).all()
+            for cita, pac in rows:
+                c_ini = cita.inicio.astimezone(tz_bolivia) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz_bolivia)
+                c_fin = cita.fin.astimezone(tz_bolivia) if cita.fin.tzinfo else cita.fin.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz_bolivia)
+                pac_nom = pac.nombre or ""
+                pac_tel_clean = re.sub(r"\D", "", str(pac.telefono or ""))
+
+                d_nom = dias[c_ini.weekday()]
+                fecha_fmt = f"{d_nom} {c_ini.day:02d}/{c_ini.month:02d}"
+                hora_fmt = f"{c_ini.strftime('%H:%M')} a {c_fin.strftime('%H:%M')}"
+                hora_12 = f"{c_ini.strftime('%I:%M %p').lstrip('0')}"
+                estado_c = "Confirmada" if cita.estado == "confirmada" else "Pendiente de confirmación"
+
+                es_de_este_paciente = False
+                if pac_tel_clean and len(pac_tel_clean) >= 7 and tel_8:
+                    pac_tel_8 = pac_tel_clean[-8:] if len(pac_tel_clean) >= 8 else pac_tel_clean
+                    if tel_8 == pac_tel_8 or tel_8 in pac_tel_clean or pac_tel_8 in tel_limpio:
+                        es_de_este_paciente = True
+
+                if es_de_este_paciente:
+                    citas_este_paciente.append(
+                        f"• {fecha_fmt} a las {c_ini.strftime('%H:%M')} ({hora_12}) - Estado: {estado_c} (Paciente: {pac_nom})"
+                    )
+                else:
+                    if ahora - timedelta(hours=2) <= c_ini <= ahora + timedelta(days=7):
+                        citas_ocupadas_otros.append(f"{c_ini.strftime('%d/%m')} {c_ini.strftime('%H:%M')}-{c_fin.strftime('%H:%M')}")
+        finally:
+            db.close()
+    except Exception as err_p:
+        safe_print(f"[Prompt Citas Query Error]: {err_p}")
+
+    if citas_este_paciente:
+        texto_citas_paciente = "CITAS AGENDADAS A NOMBRE DE ESTE PACIENTE EN NUESTRO SISTEMA:\n" + "\n".join(citas_este_paciente)
+    else:
+        texto_citas_paciente = "El paciente NO registra citas agendadas con su número actual."
+
+    ocupadas_texto = "; ".join(citas_ocupadas_otros[:14]) if citas_ocupadas_otros else "Sin turnos ocupados próximos"
 
     return f"""Eres el asistente virtual oficial de WhatsApp de 'SOLDENT - Clínica Odontológica', ubicada en {CLINICA_DIRECCION}.
 Especialista a cargo: {DOCTORA_NOMBRE} (Especialista en Odontología Integral & Ortodoncia).
@@ -279,7 +310,11 @@ Teléfono directo de la Dra. Pamela (contacto personal / urgencias): {DOCTORA_TE
 Teléfono del paciente que escribe: {tel_paciente}.
 
 FECHA Y HORA ACTUAL: {fecha_actual_legible} (Fecha ISO: {fecha_actual_iso}).
-TURNOS YA OCUPADOS PRÓXIMOS EN CONSULTORIO: {ocupadas_texto}.
+
+{texto_citas_paciente}
+
+TURNOS OCUPADOS EN CONSULTORIO POR OTROS PACIENTES:
+{ocupadas_texto}.
 
 HORARIOS OFICIALES DE ATENCIÓN DE SOLDENT (ESTRICTO):
 • Lunes a Viernes: 09:00 a 12:00 y 15:30 a 19:30.
@@ -292,12 +327,23 @@ POLÍTICA DE SERVICIOS Y PRECIOS:
 - PROHIBIDO DAR PRECIOS O COTIZACIONES POR WHATSAPP. Si preguntan precios, indica amablemente que los costos se definen de manera personalizada tras la evaluación clínica con la Dra. Pamela Pinto Suárez.
 
 REGLAS DE ATENCIÓN Y AGENDAMIENTO:
-- Sé cálido, educado y con trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos..."). Respuestas concisas para WhatsApp con emojis moderados.
-- Si el paciente pide un turno ocupado o fuera de horario, explícale amablemente y ofrece las opciones oficiales libres.
-- Para agendar necesitas: (1) Nombre completo del paciente, (2) Día y hora exacta dentro del horario de atención.
-- Si el paciente CONFIRMA su nombre y un horario válido disponible, incluye al final de tu mensaje la siguiente instrucción de reserva exacta:
-[RESERVAR: Nombre Del Paciente | YYYY-MM-DDTHH:MM:SS]
-Ejemplo: [RESERVAR: Carlos Perez | 2026-10-03T10:00:00]
+1. SI EL PACIENTE PREGUNTA SI TIENE CITA, CUÁNDO ES SU CITA O CONSULTA SU ESTADO:
+   - Revisa la sección 'CITAS AGENDADAS A NOMBRE DE ESTE PACIENTE'.
+   - Si tiene cita registrada, CONFÍRMASELO con total claridad y amabilidad, indicándole la fecha, la hora exacta (ej. "Lunes 05 de Octubre a las 19:00 (7:00 PM)") y su estado.
+   - Si NO tiene ninguna cita registrada, dile con amabilidad que no figura ninguna cita a su nombre con este número y ofrécele con gusto los horarios disponibles para agendar.
+
+2. SI EL PACIENTE PIDE AGENDAR EN UN HORARIO QUE ÉL MISMO YA TIENE AGENDADO (ej. a las 7:00 PM / 19:00 del lunes):
+   - Aclárale con amabilidad que ese turno ya está reservado a su nombre en nuestro sistema:
+     "¡Estimado/a! Justamente ese horario de las 7:00 PM (19:00) del lunes ya se encuentra reservado y agendado a su nombre en nuestro sistema. ¡Su espacio ya está asegurado!"
+   - NO intentes reservarlo de nuevo ni digas que está ocupado por otra persona. Pregúntale si confirma su asistencia o si desea reprogramarlo a otro horario.
+
+3. AGENDAR NUEVA CITA:
+   - Para agendar necesitas: (1) Nombre completo del paciente, (2) Día y hora exacta dentro del horario de atención disponible.
+   - Si el paciente CONFIRMA su nombre y un horario válido disponible (que no pertenezca a turnos ocupados), incluye al final de tu mensaje:
+     [RESERVAR: Nombre Del Paciente | YYYY-MM-DDTHH:MM:SS]
+
+4. TRATO Y TONO:
+   - Sé cálido, educado y con trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos..."). Respuestas concisas para WhatsApp con emojis moderados.
 """
 
 def llamar_gemini_http(prompt_sistema: str, historial: list) -> Optional[str]:
