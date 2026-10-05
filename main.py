@@ -266,11 +266,31 @@ def verificar_autenticacion(
         )
     return True
 
-def normalizar_telefono(tel: str) -> str:
+def es_telefono_bolivia_valido(tel: Optional[str]) -> bool:
+    if not tel:
+        return False
     digitos = "".join(c for c in tel if c.isdigit())
-    if not digitos.startswith("591") and len(digitos) == 8:
-        digitos = "591" + digitos
-    return "+" + digitos
+    if digitos.startswith("59199"):
+        return False
+    if len(digitos) == 11 and digitos.startswith("591") and digitos[3] in ("6", "7"):
+        return True
+    if len(digitos) == 8 and digitos[0] in ("6", "7"):
+        return True
+    return False
+
+def normalizar_telefono(tel: Optional[str]) -> Optional[str]:
+    if not tel:
+        return None
+    digitos = "".join(c for c in tel if c.isdigit())
+    if digitos.startswith("59199"):
+        return None
+    if len(digitos) == 8 and digitos[0] in ("6", "7"):
+        return f"+591{digitos}"
+    if len(digitos) == 11 and digitos.startswith("591") and digitos[3] in ("6", "7"):
+        return f"+{digitos}"
+    if len(digitos) > 8 and not digitos.startswith("591") and digitos[0] in ("6", "7"):
+        return f"+591{digitos[:8]}"
+    return None
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
@@ -1556,6 +1576,12 @@ def worker_recordatorios(db: Session):
         )
     ).all()
     for cita, paciente in rows:
+        if not paciente.telefono or not es_telefono_bolivia_valido(paciente.telefono):
+            print(f"[WhatsApp] Omitiendo recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido ({paciente.telefono}).")
+            cita.recordatorio_enviado = True
+            db.commit()
+            continue
+
         if db.execute(select(NotificacionEnviada).where(NotificacionEnviada.cita_id == cita.id, NotificacionEnviada.tipo == "recordatorio", NotificacionEnviada.estado == "enviado")).scalar_one_or_none():
             cita.recordatorio_enviado = True
             db.commit()
