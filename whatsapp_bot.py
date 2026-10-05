@@ -7,7 +7,14 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 import uvicorn
-from main import SessionLocal, worker_sync_outbox, worker_recordatorios, worker_sync_inverso_google, worker_resumen_turnos_doctora
+from main import (
+    SessionLocal,
+    worker_sync_outbox,
+    worker_recordatorios,
+    worker_sync_inverso_google,
+    worker_resumen_turnos_doctora,
+    worker_control_mensual_ortodoncia
+)
 
 if sys.platform == "win32":
     try:
@@ -813,6 +820,9 @@ async def loop_workers_automaticos():
                 # 4. Sincronización Inversa (iPhone / Google Calendar -> Base de Datos)
                 if ciclo % 2 == 0:
                     worker_sync_inverso_google(db)
+                # 5. Control Mensual de Ortodoncia (revisión diaria de pacientes vencidos)
+                if ciclo % 10 == 0:
+                    worker_control_mensual_ortodoncia(db)
                 ciclo += 1
             finally:
                 db.close()

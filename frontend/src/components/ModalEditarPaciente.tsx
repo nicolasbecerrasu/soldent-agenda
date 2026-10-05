@@ -39,6 +39,7 @@ export const ModalEditarPaciente: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const [modalPagosAbierto, setModalPagosAbierto] = useState(false);
+  const [esOrtodoncia, setEsOrtodoncia] = useState(false);
 
   useEffect(() => {
     if (paciente) {
@@ -48,6 +49,8 @@ export const ModalEditarPaciente: React.FC<Props> = ({
       setTelefono(tel);
       setEmail(paciente.email || '');
       setNotas(paciente.notas || '');
+      const isOrto = Boolean((paciente as any)?.alertas?.es_ortodoncia || (paciente as any)?.alertas_medicas?.es_ortodoncia);
+      setEsOrtodoncia(isOrto);
       setConfirmandoEliminar(false);
       setError(null);
       setExito(null);
@@ -87,12 +90,17 @@ export const ModalEditarPaciente: React.FC<Props> = ({
       setCargando(true);
       setError(null);
 
+      const currentAlertas = (paciente as any)?.alertas || (paciente as any)?.alertas_medicas || {};
       await api.actualizarPaciente(paciente.id, {
         nombre: nombre.trim(),
         apellidos: apellidos.trim() || undefined,
         telefono: telefono.trim() ? telefono.trim() : null,
         email: email.trim() || undefined,
         notas: notas.trim() || undefined,
+        alertas_medicas: {
+          ...currentAlertas,
+          es_ortodoncia: esOrtodoncia,
+        },
       });
 
       setExito('¡Datos del paciente actualizados correctamente!');
@@ -224,6 +232,27 @@ export const ModalEditarPaciente: React.FC<Props> = ({
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden resize-none"
               />
             </div>
+          </div>
+
+          {/* Toggle Paciente en Ortodoncia / Brackets */}
+          <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-2xl flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-purple-900 block flex items-center gap-1.5">
+                <span>🦷</span> Paciente de Ortodoncia / Brackets
+              </span>
+              <p className="text-[11px] text-purple-700/80">
+                Activa el control mensual y recordatorios automáticos por WhatsApp cada 25 días.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={esOrtodoncia}
+                onChange={(e) => setEsOrtodoncia(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+            </label>
           </div>
 
           {/* Acceso directo a Pagos y Saldos */}

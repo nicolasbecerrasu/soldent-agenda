@@ -1,4 +1,4 @@
-import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload, ResumenPagosPaciente, CrearPagoPayload } from '../types';
+import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload, ResumenPagosPaciente, CrearPagoPayload, ResumenControlOrtodoncia } from '../types';
 
 // En desarrollo local con Vite (puerto 5173 o 3000) apunta a http://host:8000/api
 // En producción (Render / Cloud) FastAPI y el Frontend están en el mismo origen, por lo que usa la ruta relativa '/api'
@@ -287,6 +287,29 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Error al enviar solicitud de reseña por WhatsApp');
+    }
+    return res.json();
+  },
+
+  // CONTROL MENSUAL DE ORTODONCIA
+  async getPacientesOrtodoncia(): Promise<ResumenControlOrtodoncia> {
+    const url = getFullUrl('/ortodoncia/pacientes');
+    const res = await authFetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al cargar pacientes de ortodoncia');
+    }
+    return res.json();
+  },
+
+  async enviarRecordatorioOrtodoncia(pacienteId: string): Promise<{ ok: boolean; enviado: boolean; mensaje: string }> {
+    const url = getFullUrl(`/ortodoncia/${pacienteId}/enviar-recordatorio`);
+    const res = await authFetch(url, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al enviar recordatorio de ortodoncia');
     }
     return res.json();
   },

@@ -69,6 +69,7 @@ export interface ActualizarPacientePayload {
   telefono?: string | null;
   email?: string;
   notas?: string;
+  alertas_medicas?: Record<string, any>;
 }
 
 export interface Pago {
@@ -101,5 +102,30 @@ export interface CrearPagoPayload {
   concepto: string;
   notas?: string;
   fecha_pago?: string;
+}
+
+export interface PacienteOrtodonciaItem {
+  paciente_id: string;
+  nombre: string;
+  apellidos?: string | null;
+  telefono?: string | null;
+  es_dummy_telefono: boolean;
+  alertas?: Record<string, any>;
+  ultima_cita_inicio?: string | null;
+  ultima_cita_motivo?: string | null;
+  dias_transcurridos: number;
+  estado_control: 'vencido' | 'proximo' | 'al_dia';
+  tiene_cita_futura: boolean;
+  proxima_cita_inicio?: string | null;
+  ultimo_recordatorio_enviado?: string | null;
+  puede_recordar: boolean;
+}
+
+export interface ResumenControlOrtodoncia {
+  total_ortodoncia: number;
+  total_vencidos: number;
+  total_proximos: number;
+  total_al_dia: number;
+  pacientes: PacienteOrtodonciaItem[];
 }
 

@@ -9,6 +9,7 @@ import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
 import { ModalEditarPaciente } from './components/ModalEditarPaciente';
 import { ModalPagosPaciente } from './components/ModalPagosPaciente';
+import { ModalControlOrtodoncia } from './components/ModalControlOrtodoncia';
 import { IosInstallBanner } from './components/IosInstallBanner';
 import { PantallaPin } from './components/PantallaPin';
 import {
@@ -21,7 +22,8 @@ import {
   Edit2,
   Trash2,
   Lock,
-  Receipt
+  Receipt,
+  Sparkles
 } from 'lucide-react';
 
 export function App() {
@@ -33,6 +35,7 @@ export function App() {
   const [busquedaDirectorio, setBusquedaDirectorio] = useState('');
   const [pacienteParaEditar, setPacienteParaEditar] = useState<Paciente | null>(null);
   const [pacienteParaPagos, setPacienteParaPagos] = useState<Paciente | null>(null);
+  const [modalOrtodonciaAbierto, setModalOrtodonciaAbierto] = useState(false);
   const [idConfirmandoEliminar, setIdConfirmandoEliminar] = useState<string | null>(null);
 
   const handleEliminarPacienteDirecto = async (pid: string) => {
@@ -186,6 +189,17 @@ export function App() {
               title="Actualizar datos"
             >
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Botón Controles Ortodoncia */}
+            <button
+              onClick={() => setModalOrtodonciaAbierto(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-all active:scale-95 shrink-0"
+              title="Seguimiento y Control Mensual de Ortodoncia"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+              <span className="hidden sm:inline">Controles Ortodoncia</span>
+              <span className="sm:hidden">Ortodoncia</span>
             </button>
 
             {/* Botón Bloquear / Cerrar Sesión PIN */}
@@ -541,6 +555,16 @@ export function App() {
         paciente={pacienteParaPagos}
         isOpen={Boolean(pacienteParaPagos)}
         onClose={() => setPacienteParaPagos(null)}
+      />
+
+      {/* Modal Control Mensual de Ortodoncia */}
+      <ModalControlOrtodoncia
+        isOpen={modalOrtodonciaAbierto}
+        onClose={() => setModalOrtodonciaAbierto(false)}
+        onAgendarCita={(_pacienteId) => {
+          setSlotSeleccionado(null);
+          setModalCitaAbierto(true);
+        }}
       />
 
       {/* Aviso de Instalación PWA en iPhone (iOS Banner) */}
