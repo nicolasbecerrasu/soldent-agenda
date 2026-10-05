@@ -721,7 +721,7 @@ async def enviar_mensaje_whatsapp(numero: str, texto: str):
     url = f"{EVOLUTION_API_URL}/send-message"
     texto_seguro = str(texto or MENSAJE_OFICIAL_DEFAULT).strip()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(url, json={
                 "number": numero,
                 "text": texto_seguro,

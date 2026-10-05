@@ -352,8 +352,22 @@ async function handleSendText(req, res) {
       targetJid = `${clean}@s.whatsapp.net`;
     }
 
+    // Simulación de presencia humana para evitar detección de bots por Meta
+    try {
+      await sock.sendPresenceUpdate('composing', targetJid);
+      const typingDelay = Math.floor(Math.random() * 1500) + 1800; // 1.8s a 3.3s de tecleo natural
+      await new Promise((r) => setTimeout(r, typingDelay));
+      await sock.sendPresenceUpdate('paused', targetJid);
+    } catch (e) {
+      // Continuar con el envío si la presencia falla
+    }
+
     await sock.sendMessage(targetJid, { text: texto });
     console.log(`[WhatsApp OUT] Mensaje enviado con éxito a ${targetJid}: ${texto.substring(0, 45)}...`);
+
+    try {
+      await sock.sendPresenceUpdate('available');
+    } catch (e) {}
     res.json({ status: 'SUCCESS', message: 'Mensaje enviado correctamente', target: targetJid, text: texto });
   } catch (err) {
     console.error('[WhatsApp OUT Error]', err.message);
@@ -438,7 +452,7 @@ async function startBaileys() {
       auth: state,
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }),
-      browser: Browsers.ubuntu('Chrome'),
+      browser: Browsers.macOS('Desktop'),
       syncFullHistory: false,
       defaultQueryTimeoutMs: 60000,
       connectTimeoutMs: 60000,

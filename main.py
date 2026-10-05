@@ -1785,7 +1785,7 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
         httpx.post(
             "http://127.0.0.1:8080/send-message",
             json={"number": doc_tel, "text": mensaje, "message": mensaje},
-            timeout=8.0
+            timeout=15.0
         )
         print(f"✅ [Resumen Turno {turno_nombre}] Enviado exitosamente a la Dra. Pamela ({doc_tel})")
         if not forzar_turno:
