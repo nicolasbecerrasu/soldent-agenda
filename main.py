@@ -1386,6 +1386,16 @@ async def ver_qr_whatsapp():
             "</body></html>"
         )
 
+@app.get("/reconnect")
+@app.post("/reconnect")
+async def reconectar_whatsapp():
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get("http://127.0.0.1:8080/reconnect")
+            return resp.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 # Montar frontend compilado si existe la carpeta dist
 dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 if os.path.exists(dist_path):

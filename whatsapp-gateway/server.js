@@ -84,7 +84,7 @@ const BACKEND_INTERNAL_URL = process.env.API_BACKEND_URL || 'http://127.0.0.1:80
 
 // Restaurar archivos de sesión desde Supabase al arrancar
 async function restaurarSesionDesdeDB() {
-  for (let intento = 1; intento <= 6; intento++) {
+  for (let intento = 1; intento <= 25; intento++) {
     try {
       console.log(`[WhatsApp Sync] Verificando sesión guardada en Supabase (intento ${intento})...`);
       const resp = await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`);
@@ -98,13 +98,14 @@ async function restaurarSesionDesdeDB() {
             fs.writeFileSync(filePath, data[k], 'utf-8');
           }
           console.log(`[WhatsApp Sync] ✅ ¡Restaurados ${keys.length} archivos de sesión desde Supabase!`);
+          return true;
         } else {
-          console.log('[WhatsApp Sync] Base de datos lista: sin sesión previa aún.');
+          console.log('[WhatsApp Sync] Base de datos vacía: no hay sesión previa guardada.');
+          return false;
         }
-        return true;
       }
     } catch (e) {
-      console.log(`[WhatsApp Sync] Esperando a que FastAPI inicie... (${e.message})`);
+      console.log(`[WhatsApp Sync] Esperando a que FastAPI inicie en ${BACKEND_INTERNAL_URL}... (${e.message})`);
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
@@ -298,6 +299,22 @@ app.get('/reset', async (req, res) => {
     res.send('<p>Sesión reiniciada. <a href="/">Volver a escanear QR</a></p><script>setTimeout(() => location.href="/", 1500);</script>');
   } catch (err) {
     res.status(500).send('Error reiniciando sesión: ' + err.message);
+  }
+});
+
+app.get('/reconnect', async (req, res) => {
+  try {
+    isConnected = false;
+    currentQR = null;
+    currentQRImage = null;
+    if (sock) {
+      try { sock.end(); } catch (e) {}
+    }
+    const restored = await restaurarSesionDesdeDB();
+    setTimeout(startBaileys, 1000);
+    res.json({ ok: true, restored });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

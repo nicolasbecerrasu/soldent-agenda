@@ -45,28 +45,35 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# 5. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
-echo "📱 [1/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
+# 5. Iniciar servidor principal FastAPI en el puerto de la nube ($APP_PORT)
+echo "🌐 [1/3] Iniciando Backend FastAPI en puerto $APP_PORT..."
+uvicorn main:app --host 0.0.0.0 --port "$APP_PORT" &
+PID_BACKEND=$!
+
+# Esperar a que FastAPI responda en /api/salud
+echo "⏳ Esperando a que FastAPI esté listo..."
+for i in $(seq 1 30); do
+    if curl -s "http://127.0.0.1:${APP_PORT}/api/salud" > /dev/null 2>&1; then
+        echo "✅ Backend FastAPI listo y saludable (intento $i)."
+        break
+    fi
+    sleep 1
+done
+
+# 6. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
+# (FastAPI ya está escuchando, por lo que restaurarSesionDesdeDB leerá Supabase al instante)
+echo "📱 [2/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
 cd /app/whatsapp-gateway
 node server.js &
 PID_GATEWAY=$!
 cd /app
 
-# Esperar 3 segundos para que Node.js inicie
 sleep 3
 
-# 6. Iniciar WhatsApp Bot con Gemini + Workers automáticos (puerto interno 5005)
-echo "🤖 [2/3] Iniciando WhatsApp Bot y ciclo de workers automáticos (puerto 5005)..."
+# 7. Iniciar WhatsApp Bot con Gemini + Workers automáticos (puerto interno 5005)
+echo "🤖 [3/3] Iniciando WhatsApp Bot y ciclo de workers automáticos (puerto 5005)..."
 python whatsapp_bot.py &
 PID_BOT=$!
-
-# Esperar 2 segundos para que el bot inicie
-sleep 2
-
-# 7. Iniciar servidor principal FastAPI en el puerto de la nube ($APP_PORT)
-echo "🌐 [3/3] Iniciando Backend FastAPI en puerto $APP_PORT..."
-uvicorn main:app --host 0.0.0.0 --port "$APP_PORT" &
-PID_BACKEND=$!
 
 # Esperar activamente a los procesos
 wait -n "$PID_BACKEND" "$PID_BOT" "$PID_GATEWAY"
