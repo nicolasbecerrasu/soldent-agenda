@@ -118,38 +118,47 @@ async function sincronizarArchivoADB(filename) {
     const filePath = path.join(authPath, filename);
     if (!fs.existsSync(filePath)) return;
     const content = fs.readFileSync(filePath, 'utf-8');
-    await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`, {
+    const res = await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: filename, value: content })
     });
+    if (res.ok) {
+      console.log(`[WhatsApp Sync] 🔑 Archivo clave '${filename}' respaldado exitosamente en Supabase.`);
+    }
   } catch (e) {
-    // Silencioso para evitar saturación
+    console.warn(`[WhatsApp Sync Error ${filename}]:`, e.message);
   }
 }
 
-// Sincronizar todos los archivos de sesión en Supabase (batch)
+// Sincronizar todos los archivos de sesión en Supabase en lotes pequeños (chunks)
 async function sincronizarDirectorioADB() {
   try {
     if (!fs.existsSync(authPath)) return;
-    const files = fs.readdirSync(authPath);
-    const items = {};
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const filePath = path.join(authPath, file);
-        items[file] = fs.readFileSync(filePath, 'utf-8');
+    // 1. Asegurar siempre creds.json primero de forma individual
+    await sincronizarArchivoADB('creds.json');
+
+    const files = fs.readdirSync(authPath).filter(f => f.endsWith('.json') && f !== 'creds.json');
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+      const slice = files.slice(i, i + CHUNK_SIZE);
+      const items = {};
+      for (const file of slice) {
+        try {
+          items[file] = fs.readFileSync(path.join(authPath, file), 'utf-8');
+        } catch (e) {}
+      }
+      if (Object.keys(items).length > 0) {
+        await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
       }
     }
-    const count = Object.keys(items).length;
-    if (count === 0) return;
-    await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
-    });
-    console.log(`[WhatsApp Sync] ✅ Respaldo en base de datos actualizado (${count} archivos).`);
+    console.log(`[WhatsApp Sync] ✅ Respaldo en base de datos completado (${files.length + 1} archivos).`);
   } catch (e) {
-    // Silencioso para evitar saturación de logs
+    console.warn('[WhatsApp Sync Error]:', e.message);
   }
 }
 
