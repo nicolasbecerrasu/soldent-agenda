@@ -61,6 +61,7 @@ export interface CrearPacientePayload {
   email?: string;
   notas?: string;
   alertas_medicas?: Record<string, any>;
+  permitir_compartido?: boolean;
 }
 
 export interface ActualizarPacientePayload {
@@ -70,6 +71,20 @@ export interface ActualizarPacientePayload {
   email?: string;
   notas?: string;
   alertas_medicas?: Record<string, any>;
+  permitir_compartido?: boolean;
+}
+
+export interface CoincidenciaTelefono {
+  id: string;
+  nombre: string;
+  telefono: string;
+}
+
+export interface VerificarTelefonoResponse {
+  valido: boolean;
+  telefono_normalizado: string | null;
+  existe: boolean;
+  coincidencias: CoincidenciaTelefono[];
 }
 
 export interface Pago {

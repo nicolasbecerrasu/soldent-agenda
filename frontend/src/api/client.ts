@@ -1,4 +1,4 @@
-import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload, ResumenPagosPaciente, CrearPagoPayload, ResumenControlOrtodoncia } from '../types';
+import type { Cita, Paciente, Tratamiento, CrearCitaPayload, CrearPacientePayload, ActualizarPacientePayload, ResumenPagosPaciente, CrearPagoPayload, ResumenControlOrtodoncia, VerificarTelefonoResponse } from '../types';
 
 // En desarrollo local con Vite (puerto 5173 o 3000) apunta a http://host:8000/api
 // En producción (Render / Cloud) FastAPI y el Frontend están en el mismo origen, por lo que usa la ruta relativa '/api'
@@ -185,6 +185,18 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || `Error al buscar pacientes: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async verificarTelefono(telefono: string, pacienteId?: string): Promise<VerificarTelefonoResponse> {
+    const url = getFullUrl('/pacientes/verificar-telefono', {
+      telefono,
+      paciente_id: pacienteId || undefined,
+    });
+    const res = await authFetch(url);
+    if (!res.ok) {
+      return { valido: false, telefono_normalizado: null, existe: false, coincidencias: [] };
     }
     return res.json();
   },

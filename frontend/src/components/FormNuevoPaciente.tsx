@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
-import { UserPlus, Phone, Mail, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UserPlus, Mail, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { InputTelefonoBolivia } from './InputTelefonoBolivia';
 
 interface Props {
   onPacienteCreado: () => void;
@@ -10,6 +11,7 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
   const [nombre, setNombre] = useState('');
   const [apellidos, setApellidos] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [permitirCompartido, setPermitirCompartido] = useState(false);
   const [email, setEmail] = useState('');
   const [notas, setNotas] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -26,18 +28,21 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
     try {
       setCargando(true);
       setError(null);
+      const telNormalizado = telefono.trim() ? `+591${telefono.trim().replace(/\D/g, '')}` : undefined;
       await api.crearPaciente({
         nombre: nombre.trim(),
         apellidos: apellidos.trim() || undefined,
-        telefono: telefono.trim() ? telefono.trim() : undefined,
+        telefono: telNormalizado,
         email: email.trim() || undefined,
         notas: notas.trim() || undefined,
+        permitir_compartido: permitirCompartido,
       });
 
       setExito('¡Paciente registrado con éxito!');
       setNombre('');
       setApellidos('');
       setTelefono('');
+      setPermitirCompartido(false);
       setEmail('');
       setNotas('');
       onPacienteCreado();
@@ -109,20 +114,15 @@ export const FormNuevoPaciente: React.FC<Props> = ({ onPacienteCreado }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-              Teléfono (Bolivia +591) - Opcional
-            </label>
-            <div className="relative">
-              <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="tel"
-                placeholder="Ej: 77123456"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 mt-1">Opcional. Se normalizará a +591 si se ingresa</p>
+            <InputTelefonoBolivia
+              value={telefono}
+              onChange={(val) => {
+                setTelefono(val);
+                setPermitirCompartido(false);
+              }}
+              permitirCompartido={permitirCompartido}
+              onTogglePermitirCompartido={setPermitirCompartido}
+            />
           </div>
 
           <div>

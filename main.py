@@ -117,7 +117,7 @@ class Paciente(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nombre = Column(Text, nullable=False)
     apellidos = Column(Text)
-    telefono = Column(Text, nullable=True, unique=True)
+    telefono = Column(Text, nullable=True, index=True)
     email = Column(Text)
     fecha_nacimiento = Column(Date)
     alertas_medicas = Column(JSON, default=dict)
@@ -333,6 +333,7 @@ class PacienteIn(BaseModel):
     fecha_nacimiento: Optional[datetime] = None
     alertas_medicas: dict = Field(default_factory=dict)
     notas: Optional[str] = None
+    permitir_compartido: Optional[bool] = False
 
 class PacienteUpdateIn(BaseModel):
     nombre: Optional[str] = None
@@ -341,6 +342,7 @@ class PacienteUpdateIn(BaseModel):
     email: Optional[str] = None
     notas: Optional[str] = None
     alertas_medicas: Optional[dict] = None
+    permitir_compartido: Optional[bool] = False
 
 class CitaIn(BaseModel):
     paciente_id: uuid.UUID
@@ -446,21 +448,74 @@ def borrar_sesion_baileys(db: Session = Depends(get_db)):
 # =============================================================
 # 5. ENDPOINTS CRUD
 # =============================================================
+@app.get("/api/pacientes/verificar-telefono")
+def verificar_telefono(
+    telefono: str,
+    paciente_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db),
+    _auth: bool = Depends(verificar_autenticacion)
+):
+    tel = normalizar_telefono(telefono)
+    if not tel:
+        return {
+            "valido": False,
+            "telefono_normalizado": None,
+            "existe": False,
+            "coincidencias": []
+        }
+
+    query = select(Paciente).where(Paciente.telefono == tel)
+    if paciente_id:
+        query = query.where(Paciente.id != paciente_id)
+
+    encontrados = db.execute(query).scalars().all()
+    coincidencias = [
+        {
+            "id": str(p.id),
+            "nombre": f"{p.nombre} {p.apellidos or ''}".strip(),
+            "telefono": p.telefono
+        }
+        for p in encontrados
+    ]
+    return {
+        "valido": es_telefono_bolivia_valido(tel),
+        "telefono_normalizado": tel,
+        "existe": len(coincidencias) > 0,
+        "coincidencias": coincidencias
+    }
+
 @app.post("/api/pacientes", status_code=status.HTTP_201_CREATED)
 def crear_paciente(data: PacienteIn, db: Session = Depends(get_db), _auth: bool = Depends(verificar_autenticacion)):
     tel = normalizar_telefono(data.telefono) if (data.telefono and data.telefono.strip()) else None
     if tel:
-        existente = db.execute(select(Paciente).where(Paciente.telefono == tel)).scalar_one_or_none()
-        if existente:
-            if data.nombre and data.nombre.strip():
-                existente.nombre = data.nombre.strip()
-                db.commit()
-            return {"id": str(existente.id)}
+        existentes = db.execute(select(Paciente).where(Paciente.telefono == tel)).scalars().all()
+        if existentes:
+            # 1. Si ya existe un paciente con el mismo nombre y mismo teléfono, devolverlo sin duplicar
+            nombre_nuevo = data.nombre.strip().lower()
+            mismo_paciente = None
+            for ex in existentes:
+                nombre_ex = f"{ex.nombre} {ex.apellidos or ''}".strip().lower()
+                if ex.nombre.strip().lower() == nombre_nuevo or nombre_ex == nombre_nuevo:
+                    mismo_paciente = ex
+                    break
+
+            if mismo_paciente:
+                return {"id": str(mismo_paciente.id)}
+
+            # 2. Si tiene distinto nombre pero NO se autorizó compartir el teléfono (caso familiar / tutor):
+            if not data.permitir_compartido:
+                ex0 = existentes[0]
+                nombre_otro = f"{ex0.nombre} {ex0.apellidos or ''}".strip()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"El teléfono {tel} ya está asignado al paciente '{nombre_otro}'. Si es familiar o tutor, confirme el registro compartido."
+                )
     elif data.nombre and data.nombre.strip():
         existente_nom = db.execute(select(Paciente).where(func.lower(Paciente.nombre) == data.nombre.strip().lower())).scalars().first()
         if existente_nom:
             return {"id": str(existente_nom.id)}
-    p = Paciente(**data.model_dump(exclude={"telefono"}), telefono=tel)
+
+    p = Paciente(**data.model_dump(exclude={"telefono", "permitir_compartido"}), telefono=tel)
     db.add(p)
     try:
         db.commit(); db.refresh(p)
@@ -484,8 +539,12 @@ def actualizar_paciente(pid: uuid.UUID, data: PacienteUpdateIn, db: Session = De
         else:
             tel = normalizar_telefono(data.telefono)
             otro = db.execute(select(Paciente).where(Paciente.telefono == tel, Paciente.id != pid)).scalar_one_or_none()
-            if otro:
-                raise HTTPException(409, "Ya existe otro paciente con ese teléfono")
+            if otro and not data.permitir_compartido:
+                nombre_otro = f"{otro.nombre} {otro.apellidos or ''}".strip()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Ya existe otro paciente con ese teléfono: '{nombre_otro}'. Si es familiar o tutor, confirme guardar."
+                )
             p.telefono = tel
     if data.nombre is not None and data.nombre.strip():
         p.nombre = data.nombre.strip()

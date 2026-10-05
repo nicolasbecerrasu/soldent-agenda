@@ -6,7 +6,6 @@ import {
   Calendar,
   Clock,
   User,
-  Phone,
   Stethoscope,
   CheckCircle2,
   AlertCircle,
@@ -15,6 +14,7 @@ import {
   UserPlus,
   Timer
 } from 'lucide-react';
+import { InputTelefonoBolivia } from './InputTelefonoBolivia';
 
 interface Props {
   isOpen: boolean;
@@ -38,9 +38,9 @@ export const ModalNuevaCita: React.FC<Props> = ({
   // 1. Estado de Paciente con Búsqueda Sincronizada
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [permitirCompartido, setPermitirCompartido] = useState(false);
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
   const [mostrarDropdownNombre, setMostrarDropdownNombre] = useState(false);
-  const [mostrarDropdownTelefono, setMostrarDropdownTelefono] = useState(false);
 
   // 2. Estado de Tratamiento y Duración
   const [tratamientoId, setTratamientoId] = useState('');
@@ -57,7 +57,6 @@ export const ModalNuevaCita: React.FC<Props> = ({
   const [exito, setExito] = useState<string | null>(null);
 
   const dropdownNombreRef = useRef<HTMLDivElement>(null);
-  const dropdownTelefonoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialFecha) setFecha(initialFecha);
@@ -70,7 +69,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
     }
   }, [tratamientos, tratamientoId]);
 
-  // Cerrar dropdowns al hacer clic fuera
+  // Cerrar dropdown de nombres al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -78,12 +77,6 @@ export const ModalNuevaCita: React.FC<Props> = ({
         !dropdownNombreRef.current.contains(event.target as Node)
       ) {
         setMostrarDropdownNombre(false);
-      }
-      if (
-        dropdownTelefonoRef.current &&
-        !dropdownTelefonoRef.current.contains(event.target as Node)
-      ) {
-        setMostrarDropdownTelefono(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -147,31 +140,19 @@ export const ModalNuevaCita: React.FC<Props> = ({
       .slice(0, 6);
   }, [nombre, pacientes]);
 
-  // Sugerencias de búsqueda por Teléfono
-  const sugerenciasTelefono = useMemo(() => {
-    const digits = telefono.replace(/\D/g, '');
-    if (!digits || digits.length < 2) return [];
-    return pacientes
-      .filter((p) => {
-        if (!p.telefono) return false;
-        const pDigits = p.telefono.replace(/\D/g, '');
-        return pDigits.includes(digits);
-      })
-      .slice(0, 6);
-  }, [telefono, pacientes]);
-
-  // Manejador al seleccionar un paciente desde cualquier dropdown
+  // Manejador al seleccionar un paciente desde el dropdown de nombres
   const handleSeleccionarPaciente = (p: Paciente) => {
     setPacienteSeleccionado(p);
     setNombre(`${p.nombre} ${p.apellidos || ''}`.trim());
     const tel = p.telefono && !p.telefono.startsWith('+59199') ? p.telefono : '';
     setTelefono(tel);
+    setPermitirCompartido(false);
     setMostrarDropdownNombre(false);
-    setMostrarDropdownTelefono(false);
   };
 
   const handleDesvincularPaciente = () => {
     setPacienteSeleccionado(null);
+    setPermitirCompartido(false);
   };
 
   if (!isOpen) return null;
@@ -233,9 +214,11 @@ export const ModalNuevaCita: React.FC<Props> = ({
 
       // Si no es un paciente seleccionado de la lista, registrarlo o buscar existente
       if (!idFinalPaciente) {
+        const telNormalizado = telefono.trim() ? `+591${telefono.trim().replace(/\D/g, '')}` : undefined;
         const nuevoPac = await api.crearPaciente({
           nombre: nombre.trim(),
-          telefono: telefono.trim() ? telefono.trim() : undefined,
+          telefono: telNormalizado,
+          permitir_compartido: permitirCompartido,
         });
         idFinalPaciente = nuevoPac.id;
       }
@@ -389,51 +372,28 @@ export const ModalNuevaCita: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Casilla 2: Teléfono con autocompletado predictivo */}
-              <div className="relative" ref={dropdownTelefonoRef}>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Teléfono / Celular <span className="text-slate-400 font-normal">(Opcional)</span>
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="tel"
-                    value={telefono}
-                    onChange={(e) => {
-                      setTelefono(e.target.value);
-                      if (pacienteSeleccionado) setPacienteSeleccionado(null);
-                      setMostrarDropdownTelefono(true);
-                    }}
-                    onFocus={() => {
-                      if (sugerenciasTelefono.length > 0) setMostrarDropdownTelefono(true);
-                    }}
-                    placeholder="Ej: 77123456"
-                    className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-slate-200 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono"
-                    autoComplete="off"
-                  />
-                </div>
-
-                {/* Dropdown predictivo de teléfonos */}
-                {mostrarDropdownTelefono && sugerenciasTelefono.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                    <div className="p-1.5 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                      Coincidencias por teléfono ({sugerenciasTelefono.length})
-                    </div>
-                    {sugerenciasTelefono.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSeleccionarPaciente(p)}
-                        className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between text-xs border-b border-slate-50 last:border-0 transition-colors"
-                      >
-                        <span className="font-mono text-blue-700 font-semibold">{p.telefono}</span>
-                        <span className="text-slate-700 text-xs truncate ml-2">
-                          {p.nombre} {p.apellidos || ''}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              {/* Casilla 2: Teléfono con pastilla fija +591 y detector inteligente */}
+              <div>
+                <InputTelefonoBolivia
+                  value={telefono}
+                  onChange={(val) => {
+                    setTelefono(val);
+                    if (pacienteSeleccionado) setPacienteSeleccionado(null);
+                    setPermitirCompartido(false);
+                  }}
+                  permitirCompartido={permitirCompartido}
+                  onTogglePermitirCompartido={setPermitirCompartido}
+                  onSeleccionarPacienteExistente={(c) => {
+                    const match = pacientes.find((p) => p.id === c.id);
+                    if (match) {
+                      handleSeleccionarPaciente(match);
+                    } else {
+                      setNombre(c.nombre);
+                      setTelefono(c.telefono.replace(/\D/g, '').slice(-8));
+                      setPermitirCompartido(false);
+                    }
+                  }}
+                />
               </div>
             </div>
           </div>

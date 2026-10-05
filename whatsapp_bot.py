@@ -129,7 +129,8 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
     try:
         r_pac = httpx.post(f"{API_BACKEND_URL}/api/pacientes", headers=BOT_HEADERS, json={
             "nombre": nombre_paciente.strip(),
-            "telefono": tel_clean
+            "telefono": tel_clean,
+            "permitir_compartido": True
         }, timeout=6.0)
 
         if r_pac.status_code == 201:
