@@ -276,8 +276,8 @@ function getHtmlPage() {
     ${lastSecurityWarning ? `<div class="alert-box"><b>⚠️ ALERTA DE SEGURIDAD:</b><br>${lastSecurityWarning}</div>` : ''}
 
     <div class="bot-box">
-      <b style="font-size: 13px;">📱 Celular asignado al BOT:</b> <span style="font-weight: 700; font-size: 14px; color: #1d4ed8;">62422577</span> (+591 62422577)<br>
-      Abre WhatsApp en el celular <b>62422577</b> y escanea este código QR.
+      <b style="font-size: 13px;">📱 Línea asignada al BOT:</b> Escanea con el WhatsApp oficial del consultorio.<br>
+      Abre WhatsApp en el celular del bot y vincula este dispositivo.
     </div>
 
     <div class="alert-box">
@@ -290,7 +290,7 @@ function getHtmlPage() {
     </div>
 
     <ol>
-      <li>En el celular del bot (<b>62422577</b>), abre WhatsApp.</li>
+      <li>En el celular del bot, abre WhatsApp.</li>
       <li>Toca <b>Menú (⋮)</b> o <b>Ajustes</b> > <b>Dispositivos vinculados</b>.</li>
       <li>Toca <b>Vincular un dispositivo</b> y apunta la cámara a este código QR.</li>
     </ol>
@@ -531,12 +531,11 @@ async function startBaileys() {
         isConnected = false;
         const statusCode = (lastDisconnect?.error)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-        const isInvalidSession = isLoggedOut || statusCode === 401 || statusCode === 403 || statusCode === 405 || statusCode === 428 || statusCode === 440 || statusCode === 500;
 
-        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). ¿Sesión inválida/logout?: ${isInvalidSession}`);
+        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). ¿Cierre de sesión manual (loggedOut)?: ${isLoggedOut}`);
 
-        if (isInvalidSession) {
-          console.log('[WhatsApp] Limpiando credenciales antiguas para generar nuevo QR...');
+        if (isLoggedOut) {
+          console.log('[WhatsApp] El usuario cerró sesión en su teléfono (loggedOut 401). Limpiando para nuevo QR...');
           currentQR = null;
           currentQRImage = null;
           await borrarSesionEnDB();
@@ -547,9 +546,11 @@ async function startBaileys() {
           } catch (e) {
             console.error('Error limpiando auth_info_baileys:', e.message);
           }
-          setTimeout(startBaileys, 1500);
+          setTimeout(startBaileys, 2000);
         } else {
-          // Reintento de reconexión por pérdida momentánea de red
+          // Para cualquier otro código (428 connectionClosed, 408 timedOut, 440 replaced, 515 restart):
+          // RECONECTAR manteniendo la sesión intacta en Supabase y disco
+          console.log(`[WhatsApp] Reconectando automáticamente a WhatsApp en 3s sin perder sesión (código: ${statusCode})...`);
           setTimeout(startBaileys, 3000);
         }
       } else if (connection === 'open') {
