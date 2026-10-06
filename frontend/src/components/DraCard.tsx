@@ -7,6 +7,7 @@ interface Props {
   tratamientos: Tratamiento[];
   filtroTratamiento: string | null;
   onSelectTratamiento: (id: string | null) => void;
+  whatsappConectado?: boolean;
 }
 
 export const DraCard: React.FC<Props> = ({
@@ -14,6 +15,7 @@ export const DraCard: React.FC<Props> = ({
   tratamientos,
   filtroTratamiento,
   onSelectTratamiento,
+  whatsappConectado,
 }) => {
   // Citas de hoy (La Paz time)
   const hoyStr = new Date().toISOString().split('T')[0];
@@ -80,6 +82,41 @@ export const DraCard: React.FC<Props> = ({
           <div className="p-2 rounded-xl bg-amber-50/60 border border-amber-100">
             <span className="text-[10px] uppercase font-bold text-slate-500 block">Pendientes</span>
             <span className="text-sm font-bold text-amber-700">{pendientes}</span>
+          </div>
+        </div>
+
+        {/* Estado en vivo del Bot de WhatsApp */}
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+            whatsappConectado 
+              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800' 
+              : 'bg-amber-50/70 border-amber-200 text-amber-800'
+          }`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                whatsappConectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`} />
+              <div className="min-w-0 text-left">
+                <p className="font-bold leading-tight truncate">
+                  {whatsappConectado ? 'Bot WhatsApp Conectado' : 'Bot Desconectado'}
+                </p>
+                <p className="text-[10px] opacity-80 leading-tight">
+                  {whatsappConectado ? 'Atención IA activa 24/7' : 'Requiere escanear QR'}
+                </p>
+              </div>
+            </div>
+            <a
+              href="/qr?pin=1104"
+              target="_blank"
+              rel="noreferrer"
+              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs ${
+                whatsappConectado
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'bg-amber-600 text-white hover:bg-amber-700'
+              }`}
+            >
+              {whatsappConectado ? 'Ver' : 'Conectar'}
+            </a>
           </div>
         </div>
       </div>

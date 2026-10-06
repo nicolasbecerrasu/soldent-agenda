@@ -57,19 +57,22 @@ export function App() {
   const [citaSeleccionada, setCitaSeleccionada] = useState<Cita | null>(null);
 
   const [backendConectado, setBackendConectado] = useState(false);
+  const [whatsappConectado, setWhatsappConectado] = useState(false);
 
   // Cargar datos en vivo
   const cargarDatos = async () => {
     try {
       setCargando(true);
-      const [dataTrat, dataPac, dataCitas] = await Promise.all([
+      const [dataTrat, dataPac, dataCitas, dataWhatsapp] = await Promise.all([
         api.getTratamientos(),
         api.getPacientes(),
         api.getCitas(),
+        api.getEstadoWhatsApp(),
       ]);
       setTratamientos(dataTrat);
       setPacientes(dataPac);
       setCitas(dataCitas);
+      setWhatsappConectado(Boolean(dataWhatsapp?.conectado));
       setBackendConectado(true);
     } catch (err) {
       console.error('Error al conectar con la API:', err);
@@ -91,12 +94,20 @@ export function App() {
     };
     verificarAcceso();
 
+    const intervalWhatsapp = setInterval(async () => {
+      const est = await api.getEstadoWhatsApp();
+      setWhatsappConectado(Boolean(est?.conectado));
+    }, 30000);
+
     const handleDesautenticado = () => {
       setAutenticado(false);
     };
 
     window.addEventListener('soldent:unauthorized', handleDesautenticado);
-    return () => window.removeEventListener('soldent:unauthorized', handleDesautenticado);
+    return () => {
+      clearInterval(intervalWhatsapp);
+      window.removeEventListener('soldent:unauthorized', handleDesautenticado);
+    };
   }, []);
 
   // Actualizar estado de una cita
@@ -181,6 +192,31 @@ export function App() {
                 {backendConectado ? 'Servidor Conectado' : 'Sin Conexión'}
               </span>
             </div>
+
+            {/* Estado en vivo del Bot de WhatsApp */}
+            <a
+              href="/qr?pin=1104"
+              target="_blank"
+              rel="noreferrer"
+              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 sm:px-3 rounded-xl border transition-all shadow-2xs active:scale-95 ${
+                whatsappConectado
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+              }`}
+              title={whatsappConectado ? 'Bot de WhatsApp conectado y respondiendo en tiempo real con IA. Clic para ver pasarela.' : 'Bot de WhatsApp desconectado. Clic para vincular con QR.'}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  whatsappConectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                }`}
+              />
+              <span className="font-bold hidden sm:inline">
+                {whatsappConectado ? 'Bot WhatsApp Activo' : 'Vincular Bot'}
+              </span>
+              <span className="font-bold sm:hidden">
+                {whatsappConectado ? 'Bot Activo' : 'Vincular'}
+              </span>
+            </a>
 
             <button
               onClick={cargarDatos}
@@ -286,6 +322,7 @@ export function App() {
                 tratamientos={tratamientos}
                 filtroTratamiento={filtroTratamiento}
                 onSelectTratamiento={setFiltroTratamiento}
+                whatsappConectado={whatsappConectado}
               />
             </div>
           )}

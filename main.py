@@ -1900,6 +1900,23 @@ async def api_enviar_mensaje(req: Request):
 @app.get("/api/salud")
 def salud(): return {"ok": True, "version": "2.0.0", "tz": settings.TZ_CONSULTORIO}
 
+@app.get("/api/whatsapp/estado")
+async def api_whatsapp_estado():
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get("http://127.0.0.1:8080/status")
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "ok": True,
+                    "conectado": data.get("connected", False),
+                    "usuario": data.get("user"),
+                    "tiene_qr": data.get("hasQR", False)
+                }
+    except Exception as e:
+        return {"ok": False, "conectado": False, "error": str(e)}
+    return {"ok": True, "conectado": False}
+
 @app.get("/api/debug-bot")
 async def api_debug_bot():
     status_diag = {"gemini_key_present": bool(os.getenv("GEMINI_API_KEY"))}

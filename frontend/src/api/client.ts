@@ -325,4 +325,18 @@ export const api = {
     }
     return res.json();
   },
+
+  // ESTADO WHATSAPP BOT
+  async getEstadoWhatsApp(): Promise<{ ok: boolean; conectado: boolean; usuario?: string; tiene_qr?: boolean }> {
+    try {
+      const url = getFullUrl('/whatsapp/estado');
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Ignorar fallos de red silenciosamente
+    }
+    return { ok: false, conectado: false };
+  },
 };
