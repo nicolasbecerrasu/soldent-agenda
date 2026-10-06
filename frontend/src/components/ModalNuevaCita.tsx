@@ -42,8 +42,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
   const [mostrarDropdownNombre, setMostrarDropdownNombre] = useState(false);
 
-  // 2. Estado de Tratamiento y Duración
-  const [tratamientoId, setTratamientoId] = useState('');
+  // 2. Estado de Tratamiento y Duración (Selección Múltiple)
+  const [tratamientosSeleccionadosIds, setTratamientosSeleccionadosIds] = useState<string[]>([]);
   const [tipoDuracionPersonalizada, setTipoDuracionPersonalizada] = useState<'120' | '240' | 'mediodia'>('120');
 
   // 3. Estado de Fecha, Hora y Notas
@@ -64,10 +64,10 @@ export const ModalNuevaCita: React.FC<Props> = ({
   }, [initialFecha, initialHora, isOpen]);
 
   useEffect(() => {
-    if (tratamientos.length > 0 && !tratamientoId) {
-      setTratamientoId(tratamientos[0].id);
+    if (tratamientos.length > 0 && tratamientosSeleccionadosIds.length === 0) {
+      setTratamientosSeleccionadosIds([tratamientos[0].id]);
     }
-  }, [tratamientos, tratamientoId]);
+  }, [tratamientos, tratamientosSeleccionadosIds]);
 
   // Cerrar dropdown de nombres al hacer clic fuera
   useEffect(() => {
@@ -83,16 +83,17 @@ export const ModalNuevaCita: React.FC<Props> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Tratamiento actual seleccionado
-  const selectedTratamiento = useMemo(() => {
-    return tratamientos.find((t) => t.id === tratamientoId);
-  }, [tratamientos, tratamientoId]);
+  // Tratamientos actualmente seleccionados
+  const tratamientosSeleccionados = useMemo(() => {
+    return tratamientos.filter((t) => tratamientosSeleccionadosIds.includes(t.id));
+  }, [tratamientos, tratamientosSeleccionadosIds]);
 
   const esTratamientoPersonalizado = useMemo(() => {
-    if (!selectedTratamiento) return false;
-    const nom = selectedTratamiento.nombre.toLowerCase();
-    return nom.includes('personalizado') || nom.includes('otro');
-  }, [selectedTratamiento]);
+    return tratamientosSeleccionados.some((t) => {
+      const nom = t.nombre.toLowerCase();
+      return nom.includes('personalizado') || nom.includes('otro');
+    });
+  }, [tratamientosSeleccionados]);
 
   // Cálculo dinámico de "Medio Día" según la hora seleccionada
   const duracionMedioDia = useMemo(() => {
@@ -109,15 +110,16 @@ export const ModalNuevaCita: React.FC<Props> = ({
     return hastaCierre > 0 ? hastaCierre : 240;
   }, [hora]);
 
-  // Duración efectiva en minutos
+  // Duración efectiva en minutos (suma de los tratamientos seleccionados)
   const duracionMinutos = useMemo(() => {
-    if (!esTratamientoPersonalizado) {
-      return selectedTratamiento?.duracion_min || 30;
+    if (esTratamientoPersonalizado) {
+      if (tipoDuracionPersonalizada === '120') return 120;
+      if (tipoDuracionPersonalizada === '240') return 240;
+      return duracionMedioDia;
     }
-    if (tipoDuracionPersonalizada === '120') return 120;
-    if (tipoDuracionPersonalizada === '240') return 240;
-    return duracionMedioDia;
-  }, [esTratamientoPersonalizado, selectedTratamiento, tipoDuracionPersonalizada, duracionMedioDia]);
+    if (tratamientosSeleccionados.length === 0) return 30;
+    return tratamientosSeleccionados.reduce((acc, t) => acc + (t.duracion_min || 30), 0);
+  }, [esTratamientoPersonalizado, tratamientosSeleccionados, tipoDuracionPersonalizada, duracionMedioDia]);
 
   // Cálculo de hora de fin (string HH:mm)
   const horaFinCalculada = useMemo(() => {
@@ -165,8 +167,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
       return;
     }
 
-    if (!tratamientoId || !fecha || !hora) {
-      setError('Por favor completa fecha, hora y tratamiento.');
+    if (tratamientosSeleccionadosIds.length === 0 || !fecha || !hora) {
+      setError('Por favor selecciona al menos una casilla de tratamiento, fecha y hora.');
       return;
     }
 
@@ -227,13 +229,19 @@ export const ModalNuevaCita: React.FC<Props> = ({
       const isoInicio = `${fecha}T${hora}:00-04:00`;
       const isoFin = `${fecha}T${horaFinCalculada}:00-04:00`;
 
+      const primerTratamientoId = tratamientosSeleccionados[0]?.id || (tratamientos[0]?.id ?? '');
+      const nombresTratamientos = tratamientosSeleccionados.map((t) => t.nombre).join(' + ');
+
       await api.crearCita({
         paciente_id: idFinalPaciente,
-        tratamiento_id: tratamientoId,
+        tratamiento_id: primerTratamientoId,
         inicio: isoInicio,
         fin: isoFin,
         duracion_min: duracionMinutos,
-        notas: notas.trim() || undefined,
+        motivo: nombresTratamientos || undefined,
+        notas: notas.trim()
+          ? (tratamientosSeleccionados.length > 1 ? `[Tratamientos: ${nombresTratamientos}] ${notas.trim()}` : notas.trim())
+          : (tratamientosSeleccionados.length > 1 ? `Tratamientos combinados: ${nombresTratamientos}` : undefined),
       });
 
       setExito('¡Cita agendada y sincronizada correctamente!');
@@ -399,25 +407,62 @@ export const ModalNuevaCita: React.FC<Props> = ({
           </div>
 
           {/* ========================================================= */}
-          {/* 2. SECCIÓN: TRATAMIENTO Y SELECTOR DE DURACIÓN */}
+          {/* 2. SECCIÓN: TRATAMIENTO (SELECCIÓN MÚLTIPLE DE CASILLAS) */}
           {/* ========================================================= */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
-              Tratamiento
-            </label>
-            <select
-              value={tratamientoId}
-              onChange={(e) => setTratamientoId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
-              required
-            >
-              {tratamientos.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre} ({t.duracion_min} min)
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
+                Tratamientos Clínicos
+              </label>
+              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                {tratamientosSeleccionadosIds.length} casilla(s) • ~{duracionMinutos} min total
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500">
+              Puedes marcar más de una casilla si se realizarán varios procedimientos en la misma cita:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+              {tratamientos.map((t) => {
+                const checked = tratamientosSeleccionadosIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setTratamientosSeleccionadosIds((prev) => {
+                        if (prev.includes(t.id)) {
+                          if (prev.length === 1) return prev; // mínimo 1 casilla
+                          return prev.filter((id) => id !== t.id);
+                        } else {
+                          return [...prev, t.id];
+                        }
+                      });
+                    }}
+                    className={`w-full text-left p-2.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2 active:scale-98 ${
+                      checked
+                        ? 'bg-blue-50/90 border-blue-400 text-blue-950 font-bold shadow-2xs'
+                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 font-medium'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {}}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 pointer-events-none shrink-0"
+                      />
+                      <span className="truncate">{t.nombre}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-500 shrink-0 font-bold">
+                      {t.duracion_min}m
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Selector de Duración Especial si es Tratamiento "Otro (Personalizado)" */}
             {esTratamientoPersonalizado && (

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { Cita } from '../types';
+import React, { useState, useEffect } from 'react';
+import type { Cita, Tratamiento } from '../types';
 import { api } from '../api/client';
 import {
   X,
@@ -16,12 +16,16 @@ import {
   Check,
   AlertTriangle,
   Receipt,
-  Star
+  Star,
+  Stethoscope,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { ModalPagosPaciente } from './ModalPagosPaciente';
 
 interface Props {
   cita: Cita | null;
+  tratamientos?: Tratamiento[];
   onClose: () => void;
   onActualizarEstado: (cita: Cita, nuevoEstado: string) => void;
   onCitaEliminada: (citaId: string) => void;
@@ -30,6 +34,7 @@ interface Props {
 
 export const ModalDetalleCita: React.FC<Props> = ({
   cita,
+  tratamientos = [],
   onClose,
   onActualizarEstado,
   onCitaEliminada,
@@ -47,6 +52,83 @@ export const ModalDetalleCita: React.FC<Props> = ({
   const [enviandoResena, setEnviandoResena] = useState(false);
   const [resenaEnviada, setResenaEnviada] = useState(false);
   const [mensajeResena, setMensajeResena] = useState<string | null>(null);
+
+  // Panel de Tratamiento (Cambio y Selección Múltiple)
+  const [panelTratamientoAbierto, setPanelTratamientoAbierto] = useState(false);
+  const [tratamientosSeleccionados, setTratamientosSeleccionados] = useState<string[]>(() => {
+    return cita.tratamiento_id ? [cita.tratamiento_id] : [];
+  });
+  const [guardandoTratamiento, setGuardandoTratamiento] = useState(false);
+  const [mensajeTratamiento, setMensajeTratamiento] = useState<string | null>(null);
+  const [catalogoTratamientos, setCatalogoTratamientos] = useState<Tratamiento[]>(tratamientos || []);
+
+  useEffect(() => {
+    if (tratamientos && tratamientos.length > 0) {
+      setCatalogoTratamientos(tratamientos);
+    } else {
+      api.getTratamientos().then(setCatalogoTratamientos).catch(() => {});
+    }
+  }, [tratamientos]);
+
+  useEffect(() => {
+    if (cita) {
+      setTratamientosSeleccionados(cita.tratamiento_id ? [cita.tratamiento_id] : []);
+      setTelefonoInput(cita.paciente.telefono || '');
+      setPanelTratamientoAbierto(false);
+    }
+  }, [cita]);
+
+  const toggleTratamiento = (tid: string) => {
+    setTratamientosSeleccionados((prev) => {
+      if (prev.includes(tid)) {
+        if (prev.length === 1) return prev; // mínimo 1 casilla
+        return prev.filter((id) => id !== tid);
+      } else {
+        return [...prev, tid];
+      }
+    });
+  };
+
+  const duracionTotalCalculada = catalogoTratamientos
+    .filter((t) => tratamientosSeleccionados.includes(t.id))
+    .reduce((acc, t) => acc + (t.duracion_min || 30), 0);
+
+  const handleGuardarTratamientos = async () => {
+    try {
+      setGuardandoTratamiento(true);
+      setErrorAccion(null);
+
+      const seleccionadosObjs = catalogoTratamientos.filter((t) =>
+        tratamientosSeleccionados.includes(t.id)
+      );
+      if (seleccionadosObjs.length === 0) return;
+
+      const principal = seleccionadosObjs[0];
+      const nombres = seleccionadosObjs.map((t) => t.nombre).join(' + ');
+
+      const res = await api.actualizarCita(cita.id, {
+        version: cita.version,
+        tratamiento_id: principal.id,
+        motivo: nombres,
+      });
+
+      cita.version = res.version;
+      cita.tratamiento_id = principal.id;
+      cita.tratamiento = principal;
+      cita.motivo = nombres;
+      cita.fin = res.fin;
+
+      setMensajeTratamiento('¡Tratamiento actualizado con éxito!');
+      setTimeout(() => setMensajeTratamiento(null), 3500);
+      setPanelTratamientoAbierto(false);
+
+      if (onPacienteActualizado) onPacienteActualizado();
+    } catch (err: any) {
+      setErrorAccion(err.message || 'Error al actualizar el tratamiento');
+    } finally {
+      setGuardandoTratamiento(false);
+    }
+  };
 
   const dInicio = new Date(cita.inicio);
   const dFin = new Date(cita.fin);
@@ -128,7 +210,9 @@ export const ModalDetalleCita: React.FC<Props> = ({
             <span className="text-[11px] uppercase tracking-wider font-bold opacity-90 block">
               Detalle de Cita Odontológica
             </span>
-            <h3 className="text-lg font-bold truncate max-w-[280px]">{cita.tratamiento?.nombre}</h3>
+            <h3 className="text-lg font-bold truncate max-w-[280px]">
+              {cita.motivo && cita.motivo !== cita.tratamiento?.nombre ? cita.motivo : cita.tratamiento?.nombre}
+            </h3>
           </div>
           <button
             onClick={onClose}
@@ -158,6 +242,109 @@ export const ModalDetalleCita: React.FC<Props> = ({
                 {horaInicioStr} - {horaFinStr} ({cita.tratamiento?.duracion_min} min)
               </p>
             </div>
+          </div>
+
+          {/* PANEL DE TRATAMIENTO (Para asignar o cambiar tratamientos a citas) */}
+          <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/70 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3.5 h-3.5 rounded-full"
+                  style={{ backgroundColor: cita.tratamiento?.color || '#3B82F6' }}
+                />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Stethoscope className="w-3.5 h-3.5 text-blue-600" />
+                  Panel de Tratamiento
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPanelTratamientoAbierto(!panelTratamientoAbierto)}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                {panelTratamientoAbierto ? 'Ocultar opciones' : 'Cambiar / Asignar'}
+                {panelTratamientoAbierto ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* Tratamiento actual */}
+            <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-xl border border-slate-100">
+              <div className="truncate pr-2">
+                <span className="text-slate-400 font-medium text-[11px] block">Tratamiento asignado:</span>
+                <p className="font-extrabold text-slate-900 text-sm truncate mt-0.5">
+                  {cita.motivo && cita.motivo !== cita.tratamiento?.nombre ? cita.motivo : cita.tratamiento?.nombre}
+                </p>
+              </div>
+              <span
+                className="font-bold text-[11px] px-2.5 py-1 rounded-lg text-white shrink-0"
+                style={{ backgroundColor: cita.tratamiento?.color || '#3B82F6' }}
+              >
+                {cita.tratamiento?.duracion_min} min
+              </span>
+            </div>
+
+            {mensajeTratamiento && (
+              <div className="p-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{mensajeTratamiento}</span>
+              </div>
+            )}
+
+            {/* Selector de Tratamientos con casillas de verificación múltiples */}
+            {panelTratamientoAbierto && (
+              <div className="pt-2 border-t border-slate-200/70 space-y-2.5 animate-in fade-in duration-150">
+                <p className="text-[11px] text-slate-600 font-semibold">
+                  Selecciona una o más casillas de tratamiento para este paciente:
+                </p>
+
+                <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                  {catalogoTratamientos.map((t) => {
+                    const estaSeleccionado = tratamientosSeleccionados.includes(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => toggleTratamiento(t.id)}
+                        className={`w-full text-left p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-2 transition-all ${
+                          estaSeleccionado
+                            ? 'bg-blue-50/90 border-blue-400 text-blue-950 font-bold shadow-2xs'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <input
+                            type="checkbox"
+                            checked={estaSeleccionado}
+                            onChange={() => {}}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 pointer-events-none shrink-0"
+                          />
+                          <span className="truncate">{t.nombre}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500 shrink-0 font-bold">
+                          {t.duracion_min} min
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Resumen y Botón Guardar */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {tratamientosSeleccionados.length} seleccionado(s) • ~{duracionTotalCalculada} min
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGuardarTratamientos}
+                    disabled={guardandoTratamiento}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors active:scale-95 shadow-sm"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {guardandoTratamiento ? 'Guardando...' : 'Aplicar Tratamiento'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Información del Paciente */}

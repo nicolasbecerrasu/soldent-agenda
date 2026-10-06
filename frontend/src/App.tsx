@@ -3,7 +3,7 @@ import { api } from './api/client';
 import type { Cita, Paciente, Tratamiento } from './types';
 import { DraCard } from './components/DraCard';
 import { CalendarioSemanal } from './components/CalendarioSemanal';
-import { ListaCitas } from './components/ListaCitas';
+import { HistorialMedico } from './components/HistorialMedico';
 import { FormNuevoPaciente } from './components/FormNuevoPaciente';
 import { ModalNuevaCita } from './components/ModalNuevaCita';
 import { ModalDetalleCita } from './components/ModalDetalleCita';
@@ -14,7 +14,7 @@ import { IosInstallBanner } from './components/IosInstallBanner';
 import { PantallaPin } from './components/PantallaPin';
 import {
   Calendar,
-  List,
+  History,
   Users,
   Plus,
   RefreshCw,
@@ -28,7 +28,7 @@ import {
 
 export function App() {
   const [autenticado, setAutenticado] = useState<boolean | null>(null);
-  const [tabActiva, setTabActiva] = useState<'semanal' | 'lista' | 'pacientes'>('semanal');
+  const [tabActiva, setTabActiva] = useState<'semanal' | 'historial' | 'pacientes'>('semanal');
   const [citas, setCitas] = useState<Cita[]>([]);
   const [tratamientos, setTratamientos] = useState<Tratamiento[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
@@ -247,15 +247,15 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setTabActiva('lista')}
+            onClick={() => setTabActiva('historial')}
             className={`py-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
-              tabActiva === 'lista'
+              tabActiva === 'historial'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <List className="w-4 h-4" />
-            Listado de Citas
+            <History className="w-4 h-4" />
+            Historial Médico
           </button>
 
           <button
@@ -299,18 +299,19 @@ export function App() {
               />
             )}
 
-            {tabActiva === 'lista' && (
-              <div className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 text-sm sm:text-base">Todas las Citas Registradas</h3>
-                  <span className="text-xs text-slate-500">{citas.length} registros</span>
-                </div>
-                <ListaCitas
-                  citas={citas}
-                  cargando={cargando}
-                  onActualizarEstado={handleActualizarEstado}
-                />
-              </div>
+            {tabActiva === 'historial' && (
+              <HistorialMedico
+                citas={citas}
+                pacientes={pacientes}
+                tratamientos={tratamientos}
+                onSelectCita={setCitaSeleccionada}
+                onNuevaCitaParaPaciente={(_p) => {
+                  setSlotSeleccionado(null);
+                  setModalCitaAbierto(true);
+                }}
+                onAbrirPagos={(p) => setPacienteParaPagos(p)}
+                onPacienteActualizado={cargarDatos}
+              />
             )}
 
             {tabActiva === 'pacientes' && (() => {
@@ -481,13 +482,13 @@ export function App() {
         </button>
 
         <button
-          onClick={() => setTabActiva('lista')}
+          onClick={() => setTabActiva('historial')}
           className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
-            tabActiva === 'lista' ? 'text-blue-600 font-bold' : 'text-slate-500'
+            tabActiva === 'historial' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
-          <List className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px]">Citas</span>
+          <History className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px]">Historial</span>
         </button>
 
         {/* Botón Central Destacado: + Nueva Cita (Ergonómico para pulgar en iPhone) */}
@@ -533,6 +534,7 @@ export function App() {
       {/* Modal Detalle de Cita */}
       <ModalDetalleCita
         cita={citaSeleccionada}
+        tratamientos={tratamientos}
         onClose={() => setCitaSeleccionada(null)}
         onActualizarEstado={handleActualizarEstado}
         onCitaEliminada={(citaId) => {

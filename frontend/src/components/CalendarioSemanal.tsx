@@ -284,10 +284,10 @@ export const CalendarioSemanal: React.FC<Props> = ({
 
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
                       <span
-                        className="font-semibold px-2 py-0.5 rounded-lg text-[11px]"
+                        className="font-semibold px-2 py-0.5 rounded-lg text-[11px] truncate max-w-[200px]"
                         style={{ backgroundColor: `${colorTrat}18`, color: colorTrat }}
                       >
-                        {cita.tratamiento?.nombre}
+                        {cita.motivo && cita.motivo !== cita.tratamiento?.nombre ? cita.motivo : cita.tratamiento?.nombre}
                       </span>
                       <span className="text-[11px] text-slate-400">
                         {cita.paciente.telefono && !cita.paciente.telefono.startsWith('+59199')
@@ -424,13 +424,13 @@ export const CalendarioSemanal: React.FC<Props> = ({
 
                             <div className="flex items-center justify-between pt-0.5">
                               <span
-                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md truncate max-w-[100px]"
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md truncate max-w-[120px]"
                                 style={{
                                   backgroundColor: `${colorTrat}18`,
                                   color: colorTrat,
                                 }}
                               >
-                                {cita.tratamiento?.nombre}
+                                {cita.motivo && cita.motivo !== cita.tratamiento?.nombre ? cita.motivo : cita.tratamiento?.nombre}
                               </span>
 
                               <span

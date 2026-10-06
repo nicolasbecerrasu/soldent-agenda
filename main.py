@@ -803,16 +803,18 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
     cita = db.get(Cita, cid)
     if not cita: raise HTTPException(404, "Cita no encontrada")
     if data.estado and data.estado not in ESTADOS_VALIDOS: raise HTTPException(422, "Estado inválido")
-    antes = {"estado": cita.estado, "inicio": str(cita.inicio), "version": cita.version}
+    antes = {"estado": cita.estado, "inicio": str(cita.inicio), "version": cita.version, "tratamiento_id": str(cita.tratamiento_id)}
     cambios = data.model_dump(exclude_unset=True, exclude={"version"})
     if not cambios: raise HTTPException(422, "Nada que actualizar")
 
-    if data.inicio:
-        trat_id = data.tratamiento_id or cita.tratamiento_id
-        trat = db.get(Tratamiento, trat_id)
-        duracion = trat.duracion_min if trat else 30
-        fin_calc = data.inicio + timedelta(minutes=duracion)
-        validar_horario_soldent(data.inicio, fin_calc)
+    ini_actual = cambios.get("inicio") or cita.inicio
+    trat_id = cambios.get("tratamiento_id") or cita.tratamiento_id
+    trat = db.get(Tratamiento, trat_id) if trat_id else None
+    duracion = trat.duracion_min if trat else 30
+    fin_calc = ini_actual + timedelta(minutes=duracion)
+
+    if data.inicio or data.tratamiento_id:
+        validar_horario_soldent(ini_actual, fin_calc)
 
         solapada = db.execute(
             select(Cita)
@@ -820,27 +822,44 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
                 Cita.id != cid,
                 Cita.estado.notin_(["cancelada", "no_asistio"]),
                 Cita.inicio < fin_calc,
-                Cita.fin > data.inicio
+                Cita.fin > ini_actual
             )
         ).scalars().first()
         if solapada:
-            raise HTTPException(409, "El nuevo horario se traslapa con otra cita activa en el consultorio")
-    
+            raise HTTPException(409, "El nuevo horario o duración se traslapa con otra cita activa en el consultorio")
+    else:
+        fin_calc = cita.fin
+
     q = text("""UPDATE agenda.citas SET inicio = COALESCE(:inicio, inicio), tratamiento_id = COALESCE(:tratamiento_id, tratamiento_id), 
-                estado = COALESCE(:estado, estado), motivo = COALESCE(:motivo, motivo), notas = COALESCE(:notas, notas), 
+                fin = COALESCE(:fin, fin), estado = COALESCE(:estado, estado), motivo = COALESCE(:motivo, motivo), notas = COALESCE(:notas, notas), 
                 version = version + 1, updated_at = now() 
                 WHERE id = :cid AND version = :version RETURNING version, fin""")
     try:
-        row = db.execute(q, {"cid": cid, "version": data.version, "inicio": cambios.get("inicio"), 
+        row = db.execute(q, {
+            "cid": cid,
+            "version": data.version,
+            "inicio": cambios.get("inicio"), 
             "tratamiento_id": str(cambios["tratamiento_id"]) if cambios.get("tratamiento_id") else None,
-            "estado": cambios.get("estado"), "motivo": cambios.get("motivo"), "notas": cambios.get("notas")}).mappings().first()
-    except IntegrityError as e:
+            "fin": fin_calc if (data.inicio or data.tratamiento_id) else None,
+            "estado": cambios.get("estado"),
+            "motivo": cambios.get("motivo"),
+            "notas": cambios.get("notas")
+        }).mappings().first()
+    except IntegrityError:
         db.rollback(); raise HTTPException(409, "El nuevo horario se traslapa con otra cita")
     if row is None:
         db.rollback(); raise HTTPException(409, "La cita fue modificada por otro proceso. Recarga e inténtalo de nuevo.")
     
-    encolar_outbox(db, cid, "update", {"estado": cambios.get("estado", cita.estado), "inicio": str(cambios.get("inicio", cita.inicio))})
-    registrar_auditoria(db, cid, "doctora", "actualizar", antes=antes, despues={"estado": cambios.get("estado", cita.estado), "version": row["version"]})
+    encolar_outbox(
+        db, cid, "update",
+        {
+            "estado": cambios.get("estado", cita.estado),
+            "inicio": ini_actual.isoformat(),
+            "fin": row["fin"].isoformat(),
+            "paciente_nombre": cita.paciente.nombre if cita.paciente else "Paciente"
+        }
+    )
+    registrar_auditoria(db, cid, "doctora", "actualizar", antes=antes, despues={"estado": cambios.get("estado", cita.estado), "version": row["version"], "tratamiento_id": str(trat_id)})
     db.commit()
     return {"id": str(cid), "version": row["version"], "fin": row["fin"].isoformat()}
 
@@ -1386,6 +1405,16 @@ def worker_sync_outbox(db: Session):
             # 2. Creación o Actualización de eventos
             inicio_iso = outbox.payload.get("inicio")
             fin_iso = outbox.payload.get("fin")
+            if not event_id or not inicio_iso or not fin_iso:
+                cita_db = db.get(Cita, outbox.entidad_id)
+                if cita_db:
+                    if not event_id and cita_db.google_event_id:
+                        event_id = cita_db.google_event_id
+                    if not inicio_iso and cita_db.inicio:
+                        inicio_iso = cita_db.inicio.isoformat()
+                    if not fin_iso and cita_db.fin:
+                        fin_iso = cita_db.fin.isoformat()
+
             if not inicio_iso or not fin_iso:
                 outbox.estado, outbox.ultimo_error = "fallido", "Falta fecha de inicio o fin en payload"
                 outbox.procesado_en = ahora
@@ -1582,9 +1611,34 @@ def worker_sync_inverso_google(db: Session):
                 db.add(paciente)
                 db.flush()
 
-            trat = db.execute(
-                select(Tratamiento).where(Tratamiento.activo == True).order_by(Tratamiento.id)
-            ).scalars().first()
+            # Detección inteligente de tratamiento según el motivo / resumen de Google Calendar
+            texto_eval = f"{summary} {descripcion}".lower()
+            trat = None
+            if any(k in texto_eval for k in ["tercer molar", "tercel molar", "molar", "cordal", "muela del juicio"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%tercer molar%"))).scalars().first()
+            elif any(k in texto_eval for k in ["implante", "implan"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%implante%"))).scalars().first()
+            elif any(k in texto_eval for k in ["ortodoncia", "bracket", "control ort", " ort ", "ajuste"]) or texto_eval.endswith(" ort"):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%ortodoncia%"))).scalars().first()
+            elif any(k in texto_eval for k in ["limpieza", "profilaxis", "destartraje", "sarro"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%limpieza%"))).scalars().first()
+            elif any(k in texto_eval for k in ["obturacion", "obturación", "resina", "curacion", "curación"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%resina%"))).scalars().first()
+            elif any(k in texto_eval for k in ["extraccion", "extracción"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%extracción%"))).scalars().first()
+            elif any(k in texto_eval for k in ["endodoncia", "conducto"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%endodoncia%"))).scalars().first()
+            elif any(k in texto_eval for k in ["blanqueamiento", "aclaramiento"]):
+                trat = db.execute(select(Tratamiento).where(Tratamiento.nombre.ilike("%blanqueamiento%"))).scalars().first()
+
+            if not trat:
+                trat = db.execute(
+                    select(Tratamiento).where(Tratamiento.nombre.ilike("%Consulta y Diagnóstico%"))
+                ).scalars().first()
+            if not trat:
+                trat = db.execute(
+                    select(Tratamiento).where(Tratamiento.activo == True).order_by(Tratamiento.id)
+                ).scalars().first()
             if not trat:
                 trat = Tratamiento(nombre="Consulta y Diagnóstico", duracion_min=30, precio=100.0)
                 db.add(trat)
