@@ -160,10 +160,10 @@ async function sincronizarDirectorioADB() {
       }
     }
 
-    // 3. Respaldar solo archivos de sesión activos y esenciales
+    // 3. Respaldar todos los archivos de sesión activos y esenciales (incluyendo creds.json)
     const files = fs.readdirSync(authPath).filter(f => {
-      if (!f.endsWith('.json') || f === 'creds.json') return false;
-      return f.startsWith('session-') || f.startsWith('app-state-') || f.startsWith('sender-key-');
+      if (!f.endsWith('.json')) return false;
+      return f === 'creds.json' || f.startsWith('session-') || f.startsWith('app-state-') || f.startsWith('sender-key-') || f.startsWith('device-') || f.startsWith('lid-') || f.startsWith('pre-key-');
     });
 
     const CHUNK_SIZE = 25;
@@ -500,7 +500,7 @@ async function startBaileys() {
 
     sock.ev.on('creds.update', async () => {
       await saveCreds();
-      await sincronizarArchivoADB('creds.json');
+      await sincronizarDirectorioADB();
     });
 
     sock.ev.on('connection.update', async (update) => {
