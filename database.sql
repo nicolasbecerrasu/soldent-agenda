@@ -45,7 +45,7 @@ INSERT INTO tratamientos (nombre, duracion_min, precio, color, activo) VALUES
 ('Limpieza y Profilaxis', 45, 150.00, '#10B981', TRUE),
 ('Curación / Resina', 45, 180.00, '#F59E0B', TRUE),
 ('Extracción Simple', 45, 200.00, '#EF4444', TRUE),
-('Endodoncia (Tratamiento de Conducto)', 90, 600.00, '#8B5CF6', TRUE),
+('Endodoncia (Tratamiento de Conducto)', 60, 600.00, '#8B5CF6', TRUE),
 ('Blanqueamiento Dental', 60, 500.00, '#06B6D4', TRUE)
 ON CONFLICT (nombre) DO UPDATE SET
     duracion_min = EXCLUDED.duracion_min,
