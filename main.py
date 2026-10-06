@@ -1861,15 +1861,26 @@ async def ver_qr_whatsapp():
             "</body></html>"
         )
 
-@app.get("/reconnect")
-@app.post("/reconnect")
-async def reconectar_whatsapp():
+@app.get("/reset", response_class=HTMLResponse)
+@app.post("/reset", response_class=HTMLResponse)
+async def reset_whatsapp(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("DELETE FROM agenda.whatsapp_session"))
+        db.commit()
+    except Exception:
+        db.rollback()
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get("http://127.0.0.1:8080/reconnect")
-            return resp.json()
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+            resp = await client.get("http://127.0.0.1:8080/reset")
+            return HTMLResponse(content=resp.text, status_code=resp.status_code)
+    except Exception:
+        return HTMLResponse(
+            "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='2;url=/qr'></head>"
+            "<body style='font-family:sans-serif;text-align:center;padding-top:50px;'>"
+            "<h3>Sesión reiniciada. Generando nuevo código QR...</h3>"
+            "</body></html>"
+        )
 
 # Montar frontend compilado si existe la carpeta dist
 dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")

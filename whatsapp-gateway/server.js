@@ -272,7 +272,18 @@ function getHtmlPage() {
 </html>`;
   }
 
-  return `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="2"></head><body style="font-family: sans-serif; text-align: center; padding-top: 50px;">Generando código QR... por favor espera unos segundos.</body></html>`;
+  return `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="3"><title>Soldent - Generando QR</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px;">
+    <div style="background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 440px; width: 100%; border: 1px solid #e2e8f0;">
+      <div style="font-size: 38px; margin-bottom: 12px;">⏳</div>
+      <h2 style="font-size: 20px; margin: 0 0 8px; color: #0f172a;">Preparando Código QR...</h2>
+      <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0 0 20px;">Conectando con la red de WhatsApp. Esta pantalla se actualiza automáticamente cada 3 segundos.</p>
+      <div>
+        <a href="/reset" style="display: inline-block; padding: 10px 18px; background: #fee2e2; color: #dc2626; border-radius: 12px; font-size: 13px; font-weight: 700; text-decoration: none; border: 1px solid #fca5a5;">
+          🔄 Limpiar sesión y Forzar nuevo QR
+        </a>
+      </div>
+    </div>
+  </body></html>`;
 }
 
 app.get('/', (req, res) => {
@@ -493,11 +504,14 @@ async function startBaileys() {
         isConnected = false;
         const statusCode = (lastDisconnect?.error)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const isInvalidSession = isLoggedOut || statusCode === 401 || statusCode === 403 || statusCode === 405 || statusCode === 428 || statusCode === 440 || statusCode === 500;
 
-        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). ¿Sesión cerrada/logout?: ${isLoggedOut}`);
+        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). ¿Sesión inválida/logout?: ${isInvalidSession}`);
 
-        if (isLoggedOut) {
+        if (isInvalidSession) {
           console.log('[WhatsApp] Limpiando credenciales antiguas para generar nuevo QR...');
+          currentQR = null;
+          currentQRImage = null;
           await borrarSesionEnDB();
           try {
             if (fs.existsSync(authPath)) {
@@ -506,7 +520,7 @@ async function startBaileys() {
           } catch (e) {
             console.error('Error limpiando auth_info_baileys:', e.message);
           }
-          setTimeout(startBaileys, 2000);
+          setTimeout(startBaileys, 1500);
         } else {
           // Reintento de reconexión por pérdida momentánea de red
           setTimeout(startBaileys, 3000);
