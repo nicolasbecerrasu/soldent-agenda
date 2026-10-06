@@ -1900,6 +1900,35 @@ async def api_enviar_mensaje(req: Request):
 @app.get("/api/salud")
 def salud(): return {"ok": True, "version": "2.0.0", "tz": settings.TZ_CONSULTORIO}
 
+@app.get("/api/debug-bot")
+async def api_debug_bot():
+    status_diag = {"gemini_key_present": bool(os.getenv("GEMINI_API_KEY"))}
+    async with httpx.AsyncClient(timeout=4.0) as client:
+        try:
+            r8080 = await client.get("http://127.0.0.1:8080/qr")
+            status_diag["gateway_8080"] = {"status": r8080.status_code, "ok": True}
+        except Exception as e:
+            status_diag["gateway_8080"] = {"ok": False, "error": str(e)}
+
+        try:
+            r5005 = await client.get("http://127.0.0.1:5005/docs")
+            status_diag["bot_5005"] = {"status": r5005.status_code, "ok": True}
+        except Exception as e:
+            status_diag["bot_5005"] = {"ok": False, "error": str(e)}
+
+        try:
+            r_wh = await client.post("http://127.0.0.1:5005/webhook", json={
+                "from": "59170277520@s.whatsapp.net",
+                "phone": "59170277520",
+                "name": "Nicolas Debug",
+                "text": "hola"
+            }, timeout=10.0)
+            status_diag["webhook_test"] = {"status": r_wh.status_code, "data": r_wh.json()}
+        except Exception as e:
+            status_diag["webhook_test"] = {"ok": False, "error": str(e)}
+
+    return status_diag
+
 def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
     err_div = f"<div class='error'>{mensaje_error}</div>" if mensaje_error else ""
     return f"""<!DOCTYPE html>
