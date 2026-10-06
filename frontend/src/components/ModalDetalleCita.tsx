@@ -199,30 +199,41 @@ export const ModalDetalleCita: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto modal-overlay-safe"
+      style={{
+        paddingTop: 'max(36px, calc(env(safe-area-inset-top) + 16px))',
+        paddingBottom: 'max(24px, calc(env(safe-area-inset-bottom) + 16px))',
+      }}
+    >
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] sm:max-h-[90vh]">
         {/* Cabecera con color del tratamiento */}
         <div
-          className="px-5 sm:px-6 py-4 flex items-center justify-between text-white"
+          className="px-5 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between text-white shrink-0 shadow-xs"
           style={{ backgroundColor: cita.tratamiento?.color || '#3B82F6' }}
         >
-          <div>
+          <div className="min-w-0 pr-3">
             <span className="text-[11px] uppercase tracking-wider font-bold opacity-90 block">
               Detalle de Cita Odontológica
             </span>
-            <h3 className="text-lg font-bold truncate max-w-[280px]">
+            <h3 className="text-base sm:text-lg font-bold truncate">
               {cita.motivo && cita.motivo !== cita.tratamiento?.nombre ? cita.motivo : cita.tratamiento?.nombre}
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-black/10 hover:bg-black/20 text-white transition-colors"
+            aria-label="Cerrar modal"
+            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-black/15 hover:bg-black/25 active:bg-black/35 text-white flex items-center justify-center transition-all shrink-0 active:scale-95 shadow-xs"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 stroke-[2.5]" />
           </button>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-4">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto grow overscroll-contain">
           {errorAccion && (
             <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -582,6 +593,18 @@ export const ModalDetalleCita: React.FC<Props> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* BOTÓN CERRAR INFERIOR (Acceso fácil desde el pulgar en celular) */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center gap-1.5 active:scale-98"
+            >
+              <X className="w-4 h-4" />
+              Cerrar Detalle
+            </button>
           </div>
         </div>
       </div>

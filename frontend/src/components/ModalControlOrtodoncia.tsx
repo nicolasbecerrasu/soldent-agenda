@@ -100,10 +100,19 @@ export const ModalControlOrtodoncia: React.FC<Props> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto modal-overlay-safe"
+      style={{
+        paddingTop: 'max(36px, calc(env(safe-area-inset-top) + 16px))',
+        paddingBottom: 'max(24px, calc(env(safe-area-inset-bottom) + 16px))',
+      }}
+    >
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] sm:max-h-[90vh]">
         {/* Cabecera */}
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-linear-to-r from-purple-700 via-indigo-700 to-blue-700 text-white shrink-0">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 bg-linear-to-r from-purple-700 via-indigo-700 to-blue-700 text-white shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-5 h-5 text-amber-300" />
@@ -113,20 +122,22 @@ export const ModalControlOrtodoncia: React.FC<Props> = ({
               <p className="text-xs text-white/80">Seguimiento y recordatorios de ajuste de brackets</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={cargarDatos}
               disabled={cargando}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center justify-center active:scale-95"
               title="Actualizar lista"
             >
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+              aria-label="Cerrar modal"
+              className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-white/15 hover:bg-white/25 active:bg-white/35 text-white flex items-center justify-center transition-all active:scale-95 shadow-xs"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5 stroke-[2.5]" />
             </button>
           </div>
         </div>

@@ -21,6 +21,12 @@ header.navbar-top {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
+/* Modales respetando la zona segura de iOS (Notch, Dynamic Island, Barra de Estado) */
+.modal-overlay-safe {
+  padding-top: max(32px, calc(env(safe-area-inset-top) + 16px));
+  padding-bottom: max(24px, calc(env(safe-area-inset-bottom) + 16px));
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
