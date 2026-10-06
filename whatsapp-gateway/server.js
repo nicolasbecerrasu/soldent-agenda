@@ -652,6 +652,13 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// Anti-Sleep Render Keep-Alive: Ping cada 7 minutos para evitar que Render se duerma
+setInterval(() => {
+  fetch('https://soldent-agenda.onrender.com/api/salud')
+    .then(() => console.log('⚡ [Keep-Alive Node] Ping enviado a Render (24/7 activo)'))
+    .catch((err) => console.log('⚠️ [Keep-Alive Node Error]:', err.message));
+}, 7 * 60 * 1000);
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Soldent WhatsApp Gateway] Servidor HTTP escuchando en http://localhost:${PORT}`);
   startBaileys();

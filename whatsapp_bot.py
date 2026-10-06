@@ -853,6 +853,16 @@ async def loop_workers_automaticos():
         try:
             db = SessionLocal()
             try:
+                # 0. Anti-Sleep Render Keep-Alive (evita que el servidor en la nube se duerma tras 15 min)
+                if ciclo % 7 == 0:
+                    try:
+                        async with httpx.AsyncClient(timeout=10.0) as client_keepalive:
+                            r_ping = await client_keepalive.get("https://soldent-agenda.onrender.com/api/salud")
+                            if r_ping.status_code == 200:
+                                safe_print("⚡ [Render Keep-Alive] Ping enviado a soldent-agenda.onrender.com (Servidor 24/7 activo)")
+                    except Exception as err_ping:
+                        safe_print(f"⚠️ [Render Keep-Alive Error]: {err_ping}")
+
                 # 1. Sincronizar citas pendientes locales hacia Google Calendar (Outbox)
                 worker_sync_outbox(db)
                 # 2. Enviar recordatorios automáticos de 3 horas a pacientes
