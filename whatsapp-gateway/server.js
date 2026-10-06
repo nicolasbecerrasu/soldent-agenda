@@ -80,11 +80,15 @@ const BOT_PHONE_EXPECTED = '59162422577';
 const DOCTORA_PHONE_FORBIDDEN = '59178472875';
 let lastSecurityWarning = null;
 
-const BACKEND_INTERNAL_URL = process.env.API_BACKEND_URL || 'http://127.0.0.1:8000';
+const BACKEND_INTERNAL_URL = process.env.API_BACKEND_URL || 'https://soldent-agenda.onrender.com';
 
 // Restaurar archivos de sesión desde Supabase al arrancar
 async function restaurarSesionDesdeDB() {
-  for (let intento = 1; intento <= 25; intento++) {
+  if (fs.existsSync(path.join(authPath, 'creds.json'))) {
+    console.log('[WhatsApp Sync] Sesión local encontrada en disco. Saltando espera de BD.');
+    return true;
+  }
+  for (let intento = 1; intento <= 3; intento++) {
     try {
       console.log(`[WhatsApp Sync] Verificando sesión guardada en Supabase (intento ${intento})...`);
       const resp = await fetch(`${BACKEND_INTERNAL_URL}/api/internal/baileys-session`);
@@ -105,9 +109,9 @@ async function restaurarSesionDesdeDB() {
         }
       }
     } catch (e) {
-      console.log(`[WhatsApp Sync] Esperando a que FastAPI inicie en ${BACKEND_INTERNAL_URL}... (${e.message})`);
+      console.log(`[WhatsApp Sync] Aviso al conectar con backend (${e.message})`);
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1000));
   }
   return false;
 }
