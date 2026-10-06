@@ -1112,10 +1112,10 @@ async def pedir_resena_cita(cita_id: uuid.UUID, db: Session = Depends(get_db), _
     msg = (
         f"¡Hola, {pac.nombre}! ✨🦷\n\n"
         f"De parte de la *Dra. Pamela Pinto Suárez* y todo el equipo de *SOLDENT*, queremos agradecerte por haber asistido a tu consulta odontológica hoy.\n\n"
-        f"Esperamos que tu atención haya sido excelente. Si te sentiste cómodo/a y bien atendido/a, ¿nos apoyarías dejándonos tu calificación y opinión de 5 estrellas en nuestro perfil de Google Maps? ⭐⭐⭐⭐⭐\n\n"
-        f"👉 Puedes calificar con 1 toque aquí:\n"
+        f"Esperamos que tu atención haya sido muy grata. ¿Nos apoyarías compartiendo tu opinión y experiencia en nuestro perfil de Google Maps? ✨\n\n"
+        f"👉 Puedes dejar tu reseña aquí:\n"
         f"{maps_url}\n\n"
-        f"¡Tu reseña nos ayuda muchísimo a seguir creciendo en Santa Cruz! Que tengas un excelente día. 💙"
+        f"¡Tu opinión nos ayuda muchísimo a seguir cuidando sonrisas en Santa Cruz! Que tengas un excelente día. 💙"
     )
 
     try:
@@ -1675,17 +1675,17 @@ def worker_sync_inverso_google(db: Session):
 
 def worker_recordatorios(db: Session):
     ahora = datetime.now(timezone.utc)
-    rec_min = int(getattr(settings, "RECORDATORIO_MIN", 175))
-    rec_max = int(getattr(settings, "RECORDATORIO_MAX", 185))
-    # Detecta citas que inicien en la ventana de 175 a 185 minutos (3 horas) y sin recordatorio previo
+    # Detecta citas pendientes/confirmadas que inicien dentro de las próximas 3 horas (hasta ahora + 3h)
+    # y cuyo inicio sea futuro (inicio > ahora), sin recordatorio enviado previamente.
+    # Al ser idempotente con recordatorio_enviado y NotificacionEnviada, resiste reinicios o caídas temporales.
     rows = db.execute(
         select(Cita, Paciente)
         .join(Paciente, Cita.paciente_id == Paciente.id)
         .where(
             Cita.estado.in_(["pendiente", "confirmada"]),
             Cita.recordatorio_enviado == False,
-            Cita.inicio >= ahora + timedelta(minutes=rec_min),
-            Cita.inicio <= ahora + timedelta(minutes=rec_max)
+            Cita.inicio <= ahora + timedelta(hours=3),
+            Cita.inicio > ahora
         )
     ).all()
     for cita, paciente in rows:
@@ -1900,24 +1900,75 @@ async def api_enviar_mensaje(req: Request):
 @app.get("/api/salud")
 def salud(): return {"ok": True, "version": "2.0.0", "tz": settings.TZ_CONSULTORIO}
 
+def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
+    err_div = f"<div class='error'>{mensaje_error}</div>" if mensaje_error else ""
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Soldent - Acceso Seguro</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #f8fafc; }}
+        .card {{ background: #1e293b; padding: 32px 28px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: center; max-width: 360px; width: 90%; border: 1px solid #334155; }}
+        h2 {{ color: #38bdf8; margin: 0 0 8px 0; font-size: 22px; }}
+        p {{ color: #94a3b8; font-size: 14px; margin: 0 0 20px 0; line-height: 1.4; }}
+        input {{ width: 100%; box-sizing: border-box; padding: 14px; font-size: 20px; text-align: center; letter-spacing: 6px; border: 2px solid #334155; border-radius: 12px; margin-bottom: 16px; background: #0f172a; color: #f8fafc; outline: none; }}
+        input:focus {{ border-color: #38bdf8; }}
+        button {{ width: 100%; background: #0284c7; color: white; padding: 14px; font-size: 16px; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: background 0.2s; }}
+        button:hover {{ background: #0369a1; }}
+        .error {{ color: #f87171; font-size: 13px; margin-top: 12px; font-weight: 500; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🔒 Soldent - Acceso Seguro</h2>
+        <p>Ingresa el PIN de la Doctora para ver o administrar la vinculación de WhatsApp:</p>
+        <form method="GET" action="{accion}">
+            <input type="password" name="pin" placeholder="••••" autofocus required maxlength="10" />
+            <button type="submit">Desbloquear</button>
+            {err_div}
+        </form>
+    </div>
+</body>
+</html>"""
+
 @app.get("/whatsapp", response_class=HTMLResponse)
 @app.get("/qr", response_class=HTMLResponse)
-async def ver_qr_whatsapp():
+async def ver_qr_whatsapp(request: Request, pin: Optional[str] = None):
+    cookie_pin = request.cookies.get("soldent_admin_pin")
+    es_valido = (pin and pin.strip() == settings.DOCTORA_PIN) or (cookie_pin and cookie_pin.strip() == settings.DOCTORA_PIN)
+
+    if not es_valido:
+        err = "⚠️ PIN incorrecto. Intenta nuevamente." if pin else ""
+        return HTMLResponse(content=_generar_form_pin_html(err, accion="/qr"), status_code=401 if pin else 200)
+
     try:
         async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get("http://127.0.0.1:8080/qr")
-            return HTMLResponse(content=resp.text, status_code=resp.status_code)
+            response = HTMLResponse(content=resp.text, status_code=resp.status_code)
+            response.set_cookie(key="soldent_admin_pin", value=settings.DOCTORA_PIN, max_age=86400, httponly=True)
+            return response
     except Exception as e:
-        return HTMLResponse(
+        response = HTMLResponse(
             "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='3'><title>Soldent</title></head>"
             "<body style='font-family:sans-serif;text-align:center;padding-top:50px;'>"
             "<h3>Iniciando pasarela de WhatsApp... por favor espera unos segundos.</h3>"
             "</body></html>"
         )
+        response.set_cookie(key="soldent_admin_pin", value=settings.DOCTORA_PIN, max_age=86400, httponly=True)
+        return response
 
 @app.get("/reset", response_class=HTMLResponse)
 @app.post("/reset", response_class=HTMLResponse)
-async def reset_whatsapp(db: Session = Depends(get_db)):
+async def reset_whatsapp(request: Request, pin: Optional[str] = None, db: Session = Depends(get_db)):
+    cookie_pin = request.cookies.get("soldent_admin_pin")
+    es_valido = (pin and pin.strip() == settings.DOCTORA_PIN) or (cookie_pin and cookie_pin.strip() == settings.DOCTORA_PIN)
+
+    if not es_valido:
+        err = "⚠️ PIN incorrecto. Intenta nuevamente." if pin else ""
+        return HTMLResponse(content=_generar_form_pin_html(err, accion="/reset"), status_code=401 if pin else 200)
+
     try:
         db.execute(text("DELETE FROM agenda.whatsapp_session"))
         db.commit()
@@ -1927,14 +1978,18 @@ async def reset_whatsapp(db: Session = Depends(get_db)):
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get("http://127.0.0.1:8080/reset")
-            return HTMLResponse(content=resp.text, status_code=resp.status_code)
+            response = HTMLResponse(content=resp.text, status_code=resp.status_code)
+            response.set_cookie(key="soldent_admin_pin", value=settings.DOCTORA_PIN, max_age=86400, httponly=True)
+            return response
     except Exception:
-        return HTMLResponse(
+        response = HTMLResponse(
             "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='2;url=/qr'></head>"
             "<body style='font-family:sans-serif;text-align:center;padding-top:50px;'>"
             "<h3>Sesión reiniciada. Generando nuevo código QR...</h3>"
             "</body></html>"
         )
+        response.set_cookie(key="soldent_admin_pin", value=settings.DOCTORA_PIN, max_age=86400, httponly=True)
+        return response
 
 # Montar frontend compilado si existe la carpeta dist
 dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")
