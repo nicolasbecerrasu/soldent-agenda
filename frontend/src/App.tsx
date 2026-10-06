@@ -278,15 +278,17 @@ export function App() {
       {/* Contenido Principal */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 grow">
         <div className="flex flex-col lg:flex-row gap-5 sm:gap-6">
-          {/* Tarjeta Lateral de la Doctora y Tratamientos (visible en desktop, oculta en móvil para dar espacio limpio al calendario) */}
-          <div className="hidden lg:block">
-            <DraCard
-              citas={citas}
-              tratamientos={tratamientos}
-              filtroTratamiento={filtroTratamiento}
-              onSelectTratamiento={setFiltroTratamiento}
-            />
-          </div>
+          {/* Tarjeta Lateral de la Doctora y Tratamientos (visible únicamente en el Calendario Semanal para filtrar) */}
+          {tabActiva === 'semanal' && (
+            <div className="hidden lg:block shrink-0">
+              <DraCard
+                citas={citas}
+                tratamientos={tratamientos}
+                filtroTratamiento={filtroTratamiento}
+                onSelectTratamiento={setFiltroTratamiento}
+              />
+            </div>
+          )}
 
           {/* Área Principal de Contenido */}
           <section className="grow min-w-0">
@@ -324,11 +326,11 @@ export function App() {
               });
 
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-                  <div className="lg:col-span-1">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-4">
                     <FormNuevoPaciente onPacienteCreado={cargarDatos} />
                   </div>
-                  <div className="lg:col-span-2 space-y-3">
+                  <div className="lg:col-span-7 xl:col-span-8 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200/80">
                       <div>
                         <h3 className="font-bold text-slate-900 text-sm sm:text-base">Directorio de Pacientes</h3>
