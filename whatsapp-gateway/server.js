@@ -135,15 +135,30 @@ async function sincronizarArchivoADB(filename) {
   }
 }
 
-// Sincronizar todos los archivos de sesión en Supabase en lotes pequeños (chunks)
+// Sincronizar solo los archivos esenciales de sesión en Supabase para no saturar memoria
 async function sincronizarDirectorioADB() {
   try {
     if (!fs.existsSync(authPath)) return;
     // 1. Asegurar siempre creds.json primero de forma individual
     await sincronizarArchivoADB('creds.json');
 
-    const files = fs.readdirSync(authPath).filter(f => f.endsWith('.json') && f !== 'creds.json');
-    const CHUNK_SIZE = 50;
+    // 2. Limpieza proactiva de memoria: si hay más de 40 pre-keys acumuladas, borrar las viejas
+    const allFiles = fs.readdirSync(authPath);
+    const preKeys = allFiles.filter(f => f.startsWith('pre-key-')).sort();
+    if (preKeys.length > 40) {
+      const toDelete = preKeys.slice(0, preKeys.length - 20);
+      for (const oldKey of toDelete) {
+        try { fs.unlinkSync(path.join(authPath, oldKey)); } catch (e) {}
+      }
+    }
+
+    // 3. Respaldar solo archivos de sesión activos y esenciales
+    const files = fs.readdirSync(authPath).filter(f => {
+      if (!f.endsWith('.json') || f === 'creds.json') return false;
+      return f.startsWith('session-') || f.startsWith('app-state-') || f.startsWith('sender-key-');
+    });
+
+    const CHUNK_SIZE = 25;
     for (let i = 0; i < files.length; i += CHUNK_SIZE) {
       const slice = files.slice(i, i + CHUNK_SIZE);
       const items = {};
@@ -160,7 +175,7 @@ async function sincronizarDirectorioADB() {
         });
       }
     }
-    console.log(`[WhatsApp Sync] ✅ Respaldo en base de datos completado (${files.length + 1} archivos).`);
+    console.log(`[WhatsApp Sync] ✅ Respaldo ligero completado (${files.length + 1} archivos esenciales).`);
   } catch (e) {
     console.warn('[WhatsApp Sync Error]:', e.message);
   }
@@ -477,7 +492,7 @@ async function startBaileys() {
 
     sock.ev.on('creds.update', async () => {
       await saveCreds();
-      await sincronizarDirectorioADB();
+      await sincronizarArchivoADB('creds.json');
     });
 
     sock.ev.on('connection.update', async (update) => {

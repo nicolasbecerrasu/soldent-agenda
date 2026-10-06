@@ -64,7 +64,7 @@ done
 # (FastAPI ya está escuchando, por lo que restaurarSesionDesdeDB leerá Supabase al instante)
 echo "📱 [2/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
 cd /app/whatsapp-gateway
-node server.js &
+node --max-old-space-size=96 server.js &
 PID_GATEWAY=$!
 cd /app
 
