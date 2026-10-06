@@ -16,6 +16,14 @@ const http = require('http');
 const PORT = 8080;
 const PYTHON_BOT_URL = 'http://127.0.0.1:5005/webhook';
 
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ [Node uncaughtException]:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ [Node unhandledRejection]:', reason);
+});
+
 const app = express();
 if (cors) {
   app.use(cors());
