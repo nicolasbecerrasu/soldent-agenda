@@ -81,6 +81,9 @@ def consultar_disponibilidad(fecha: str) -> str:
     if dt_target.weekday() == 6:  # Domingo
         return f"DOMINGO_CERRADO: El {dia_nombre} {fecha_fmt} la clínica permanece cerrada todo el día. Atendemos de Lunes a Viernes de 09:00 a 12:00 y de 15:30 a 19:30, y Sábados de 09:00 a 12:00."
 
+    if dt_target.weekday() in (1, 3):  # Martes y Jueves
+        return f"MARTES_JUEVES_DIRECTO_DRA: Los días {dia_nombre} la agenda se coordina de manera directa y personalizada con la {DOCTORA_NOMBRE} al {DOCTORA_TELEFONO}. No se puede agendar por este bot para los días martes o jueves."
+
     citas_dia = []
     try:
         r = httpx.get(f"{API_BACKEND_URL}/api/citas", headers=BOT_HEADERS, timeout=6.0)
@@ -193,6 +196,9 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
 
     if weekday == 6:
         return "ERROR_DOMINGO_CERRADO: Los domingos la clínica Soldent permanece cerrada todo el día. Atendemos de Lunes a Viernes de 09:00 a 12:00 o 15:30 a 19:30, y Sábados de 09:00 a 12:00."
+
+    if weekday in (1, 3):
+        return f"ERROR_MARTES_JUEVES_DIRECTO_DOCTORA: Las citas de los días martes y jueves se agendan de manera exclusiva y personalizada directamente con la {DOCTORA_NOMBRE} al {DOCTORA_TELEFONO}."
 
     if weekday == 5:
         if not (t_ini >= t_0900 and t_fin <= t_1200):
@@ -331,11 +337,21 @@ HORARIOS OFICIALES DE ATENCIÓN DE SOLDENT (ESTRICTO):
 • Domingos: CERRADO todo el día.
 
 POLÍTICA DE SERVICIOS Y PRECIOS:
-- Todas las atenciones se estandarizan como "Consulta Odontológica" (o "su consulta"). No menciones nombres de tratamientos específicos (ej. limpieza, resina, ortodoncia, etc.).
-- PROHIBIDO DAR PRECIOS O COTIZACIONES POR WHATSAPP. Si preguntan precios, indica amablemente que los costos se definen de manera personalizada tras la evaluación clínica con la Dra. Pamela Pinto Suárez.
+- ESPECIALIDADES DE LA DRA. PAMELA: La Dra. Pamela Pinto Suárez es especialista en Odontología Integral y Ortodoncia. Si el paciente pregunta qué tratamientos realiza o qué le puede hacer la doctora, explícale amablemente y con orgullo profesional: Ortodoncia (brackets y alineadores dentales), limpiezas profundas y profilaxis, curaciones y restauraciones estéticas en resina, evaluación general y diseño de sonrisas. Explícale que todo tratamiento inicia con una Evaluación Clínica / Consulta Odontológica para valorar su boca.
+- PRECIOS: PROHIBIDO DAR PRECIOS O COTIZACIONES EXACTAS POR WHATSAPP. Si preguntan precios, indica amablemente que los costos se definen de manera personalizada tras la evaluación clínica presencial con la Dra. Pamela Pinto Suárez.
+- PREGUNTAS CASUALES (ej. el clima, cómo estás, etc.): Responde con simpatía y calidez cruceña ("¡Por aquí todo excelente y con el consultorio listo para atenderte!", etc.) y conecta amablemente la conversación invitando a consultar dudas dentales o agendar su consulta.
 
 REGLAS DE ATENCIÓN Y AGENDAMIENTO:
-1. SI EL PACIENTE PREGUNTA SI TIENE CITA, CUÁNDO ES SU CITA O CONSULTA SU ESTADO:
+1. REGLA ESTRICTA - MARTES Y JUEVES (NO AGENDAR POR BOT, DERIVAR A LA DRA. PAMELA):
+   - Los días MARTES y JUEVES este bot TIENE ESTRICTAMENTE PROHIBIDO agendar citas o confirmar turnos.
+   - La atención de los días martes y jueves se coordina de manera EXCLUSIVA Y DIRECTA con la Dra. Pamela Pinto Suárez.
+   - Si el paciente pide cita para un día MARTES o JUEVES, o pregunta por horarios de esos días:
+     1. Explícale con amabilidad que la agenda de los días martes y jueves se coordina de forma personalizada y directa con la Dra. Pamela Pinto Suárez.
+     2. Dale el número directo de la doctora: +591 78472875 para que le escriba o llame directamente.
+     3. Indícale que si prefiere agendar por aquí mismo mediante el bot, con mucho gusto le puedes agendar para los días LUNES, MIÉRCOLES, VIERNES o SÁBADOS por la mañana.
+     4. NUNCA generes la etiqueta [RESERVAR: ...] para un martes o jueves.
+
+2. SI EL PACIENTE PREGUNTA SI TIENE CITA, CUÁNDO ES SU CITA O CONSULTA SU ESTADO:
    - Revisa la sección 'CITAS AGENDADAS A NOMBRE DE ESTE PACIENTE'.
    - Si tiene cita registrada, CONFÍRMASELO con total claridad y amabilidad, indicándole la fecha, la hora exacta (ej. "Lunes 05 de Octubre a las 19:00 (7:00 PM)") y su estado.
    - Si NO tiene ninguna cita registrada, dile con amabilidad que no figura ninguna cita a su nombre con este número y ofrécele con gusto los horarios disponibles para agendar.
@@ -360,10 +376,10 @@ def llamar_gemini_http(prompt_sistema: str, historial: list) -> Optional[str]:
         return None
 
     modelos = [
-        "gemini-1.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
         "gemini-flash-latest",
-        "gemini-2.5-flash",
-        "gemini-3.1-flash-lite-preview"
+        "gemini-3.8-flash"
     ]
 
     contents = []
@@ -490,6 +506,15 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
                 f"¡Estimado/a {nombre_cita}! Le recordamos que ya cuenta con una consulta odontológica activa "
                 f"agendada en Soldent. Le esperamos en la {CLINICA_DIRECCION}."
             )
+
+        elif "ERROR_MARTES_JUEVES_DIRECTO_DOCTORA" in resultado_reserva:
+            msg_directo = (
+                f"¡Estimado/a {nombre_cita}! Las citas para los días martes y jueves se coordinan de manera exclusiva y personalizada directamente con la {DOCTORA_NOMBRE}.\n\n"
+                f"📲 Por favor comuníquese directamente a su WhatsApp o llámele al *{DOCTORA_TELEFONO}* para coordinar su espacio.\n\n"
+                "Si prefiere agendar por aquí mismo mediante el asistente, con mucho gusto podemos ayudarle para los días Lunes, Miércoles, Viernes o Sábado."
+            )
+            historial.append({"role": "model", "text": msg_directo})
+            return msg_directo
 
         elif any(err in resultado_reserva for err in ("ERROR_RECESO_MEDIODIA", "ERROR_SABADO_TARDE_CERRADO", "ERROR_DOMINGO_CERRADO", "ERROR_HORARIO_NO_PERMITIDO")):
             historial.append({"role": "model", "text": resultado_reserva})
@@ -796,6 +821,22 @@ async def recibir_mensaje(req: Request):
 
         safe_print(f"[Gemini OUT]: {texto_respuesta}\n")
         await enviar_mensaje_whatsapp(remitente, texto_respuesta)
+
+        # Si el paciente consultó por martes o jueves, notificar por cortesía a la Dra. Pamela
+        texto_low = texto.lower()
+        if any(d in texto_low for d in ("martes", "jueves")):
+            msg_alerta_dra = (
+                "🦷 *SOLDENT - Paciente Interesado en Martes/Jueves*\n\n"
+                f"Dra. Pamela, el paciente *{nombre}* ({tel_paciente}) consultó por atención:\n"
+                f"💬 *Mensaje:* \"{texto}\"\n\n"
+                f"👉 El bot le indicó que coordine directamente con usted a su WhatsApp ({DOCTORA_TELEFONO})."
+            )
+            try:
+                await enviar_mensaje_whatsapp(DOCTORA_TELEFONO, msg_alerta_dra)
+                safe_print(f"✅ [Alerta Martes/Jueves] Notificación enviada a la Dra. Pamela sobre {nombre}")
+            except Exception as e_alerta:
+                safe_print(f"⚠️ [Error Alerta Martes/Jueves]: {e_alerta}")
+
         return {"ok": True, "respuesta": texto_respuesta}
 
     except Exception as e:
