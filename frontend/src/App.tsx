@@ -181,15 +181,22 @@ export function App() {
           </div>
 
           {/* Estado de sincronización y Acciones */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            <div className="hidden lg:flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Indicador Servidor Conectado (Visible en Celular y PC) */}
+            <div
+              className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 shrink-0"
+              title={backendConectado ? 'Servidor Backend de Soldent conectado' : 'Sin conexión con el servidor backend'}
+            >
               <span
-                className={`w-2.5 h-2.5 rounded-full ${
+                className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${
                   backendConectado ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
                 }`}
               />
-              <span className="font-semibold text-slate-700">
+              <span className="font-semibold text-slate-700 hidden sm:inline">
                 {backendConectado ? 'Servidor Conectado' : 'Sin Conexión'}
+              </span>
+              <span className="font-bold text-[11px] text-slate-700 sm:hidden">
+                {backendConectado ? 'Servidor' : 'Offline'}
               </span>
             </div>
 
@@ -227,14 +234,14 @@ export function App() {
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
             </button>
 
-            {/* Botón Controles Ortodoncia */}
+            {/* En Desktop: Botón Controles Ortodoncia */}
             <button
               onClick={() => setModalOrtodonciaAbierto(true)}
-              className="p-2 sm:px-3 sm:py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-all active:scale-95 shrink-0 flex items-center gap-1.5 text-xs font-bold"
+              className="hidden md:inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 sm:px-3 sm:py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-all active:scale-95 shrink-0"
               title="Seguimiento y Control Mensual de Ortodoncia"
             >
-              <Sparkles className="w-4 h-4 text-purple-600" />
-              <span className="hidden sm:inline">Controles Ortodoncia</span>
+              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+              <span>Controles Ortodoncia</span>
             </button>
 
             {/* Botón Bloquear / Cerrar Sesión PIN */}
@@ -508,10 +515,11 @@ export function App() {
       {/* ======================================================== */}
       {/* BARRA DE NAVEGACIÓN INFERIOR PARA IPHONE / CELULAR */}
       {/* ======================================================== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-3 py-1.5 flex items-center justify-between md:hidden shadow-lg safe-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-1.5 py-1.5 flex items-center justify-between md:hidden shadow-lg safe-bottom">
+        {/* 1. Pestaña Agenda */}
         <button
           onClick={() => setTabActiva('semanal')}
-          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all ${
             tabActiva === 'semanal' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -519,9 +527,22 @@ export function App() {
           <span className="text-[10px]">Agenda</span>
         </button>
 
+        {/* 2. Botón Destacado: Controles de Ortodoncia (Medio salido, Morado, entre Agenda e Historial) */}
+        <button
+          onClick={() => setModalOrtodonciaAbierto(true)}
+          className="flex-1 flex flex-col items-center justify-center -mt-5 group focus:outline-hidden"
+          title="Seguimiento y Control Mensual de Ortodoncia"
+        >
+          <div className="w-11 h-11 rounded-full bg-purple-600 group-hover:bg-purple-700 text-white shadow-lg shadow-purple-500/35 flex items-center justify-center transition-all active:scale-90 border-[2.5px] border-white">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <span className="text-[9px] font-bold text-purple-700 mt-0.5">Ortodoncia</span>
+        </button>
+
+        {/* 3. Pestaña Historial Médico */}
         <button
           onClick={() => setTabActiva('historial')}
-          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all ${
             tabActiva === 'historial' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
@@ -529,24 +550,25 @@ export function App() {
           <span className="text-[10px]">Historial</span>
         </button>
 
-        {/* Botón Central Destacado: + Nueva Cita (Ergonómico para pulgar en iPhone) */}
+        {/* 4. Botón Destacado: + Nueva Cita (Medio salido, Azul) */}
         <button
           onClick={() => {
             setSlotSeleccionado(null);
             setModalCitaAbierto(true);
           }}
-          className="mx-2 flex flex-col items-center justify-center -mt-6 group focus:outline-hidden"
+          className="flex-1 flex flex-col items-center justify-center -mt-5 group focus:outline-hidden"
           title="Crear Nueva Cita"
         >
-          <div className="w-13 h-13 rounded-full bg-blue-600 group-hover:bg-blue-700 text-white shadow-xl shadow-blue-500/40 flex items-center justify-center transition-all active:scale-90 border-[3px] border-white">
-            <Plus className="w-6 h-6 stroke-[2.5]" />
+          <div className="w-11 h-11 rounded-full bg-blue-600 group-hover:bg-blue-700 text-white shadow-lg shadow-blue-500/35 flex items-center justify-center transition-all active:scale-90 border-[2.5px] border-white">
+            <Plus className="w-5 h-5 stroke-[2.5]" />
           </div>
-          <span className="text-[10px] font-bold text-blue-600 mt-0.5">Nueva Cita</span>
+          <span className="text-[9px] font-bold text-blue-700 mt-0.5">Nueva Cita</span>
         </button>
 
+        {/* 5. Pestaña Pacientes */}
         <button
           onClick={() => setTabActiva('pacientes')}
-          className={`flex-1 flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
+          className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all ${
             tabActiva === 'pacientes' ? 'text-blue-600 font-bold' : 'text-slate-500'
           }`}
         >
