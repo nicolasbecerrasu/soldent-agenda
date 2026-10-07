@@ -16,7 +16,8 @@ import {
   Save,
   X,
   History,
-  Phone
+  Phone,
+  ChevronLeft
 } from 'lucide-react';
 
 interface Props {
@@ -41,6 +42,7 @@ export const HistorialMedico: React.FC<Props> = ({
   const [busqueda, setBusqueda] = useState('');
   const [pacienteSeleccionadoId, setPacienteSeleccionadoId] = useState<string | null>(null);
   const [vista, setVista] = useState<'paciente' | 'todos'>('paciente');
+  const [vistaMobile, setVistaMobile] = useState<'lista' | 'ficha'>('lista');
   
   // Edición de notas clínicas y antecedentes médicos
   const [editandoAlertas, setEditandoAlertas] = useState(false);
@@ -158,7 +160,10 @@ export const HistorialMedico: React.FC<Props> = ({
           {/* Selector de Modo */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-semibold self-start sm:self-center">
             <button
-              onClick={() => setVista('paciente')}
+              onClick={() => {
+                setVista('paciente');
+                setVistaMobile('lista');
+              }}
               className={`px-3 py-1.5 rounded-lg transition-all ${
                 vista === 'paciente' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -173,6 +178,14 @@ export const HistorialMedico: React.FC<Props> = ({
             >
               Registro Cronológico General
             </button>
+          </div>
+        </div>
+
+        {/* Banner explicativo de la Ficha Médica */}
+        <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
+          <Stethoscope className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">
+            <span className="font-bold">¿Cómo funciona la Ficha Clínica?</span> Al seleccionar a un paciente puedes registrar <span className="font-semibold">alertas médicas</span> (alergias a medicamentos, látex, patologías de base), redactar <span className="font-semibold">notas de evolución dental</span>, consultar todo su historial de citas, agendarle nuevas consultas y gestionar sus presupuestos y pagos.
           </div>
         </div>
 
@@ -212,13 +225,13 @@ export const HistorialMedico: React.FC<Props> = ({
       {vista === 'paciente' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Columna Izquierda: Lista de Selección de Pacientes */}
-          <div className="lg:col-span-4 space-y-2">
+          <div className={`lg:col-span-4 space-y-2 ${vistaMobile === 'ficha' ? 'hidden lg:block' : 'block'}`}>
             <div className="bg-white rounded-3xl border border-slate-200/80 p-3 sm:p-4 shadow-xs">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Pacientes ({pacientesFiltrados.length})
                 </span>
-                <span className="text-[11px] text-slate-500">Selecciona para ver ficha</span>
+                <span className="text-[11px] text-slate-500">Toca para abrir ficha</span>
               </div>
 
               <div className="space-y-1.5 max-h-[550px] overflow-y-auto pr-1">
@@ -237,6 +250,7 @@ export const HistorialMedico: React.FC<Props> = ({
                         onClick={() => {
                           setPacienteSeleccionadoId(p.id);
                           setEditandoAlertas(false);
+                          setVistaMobile('ficha');
                         }}
                         className={`w-full text-left p-3 rounded-2xl transition-all flex items-center justify-between gap-2 border ${
                           esSeleccionado
@@ -269,6 +283,7 @@ export const HistorialMedico: React.FC<Props> = ({
                           >
                             {totalCitasP} {totalCitasP === 1 ? 'cita' : 'citas'}
                           </span>
+                          <ChevronRight className={`w-4 h-4 lg:hidden ${esSeleccionado ? 'text-white' : 'text-slate-400'}`} />
                         </div>
                       </button>
                     );
@@ -279,9 +294,23 @@ export const HistorialMedico: React.FC<Props> = ({
           </div>
 
           {/* Columna Derecha: Detalle de la Ficha Médica y Citas */}
-          <div className="lg:col-span-8 space-y-4">
+          <div className={`lg:col-span-8 space-y-4 ${vistaMobile === 'lista' ? 'hidden lg:block' : 'block'}`}>
             {pacienteActivo ? (
               <>
+                {/* Barra de Retorno en Móvil */}
+                <div className="lg:hidden flex items-center justify-between bg-blue-50/90 border border-blue-200 p-3 rounded-2xl shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setVistaMobile('lista')}
+                    className="inline-flex items-center gap-1.5 text-xs font-extrabold text-blue-700 hover:text-blue-900 active:scale-95 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                    <span>Volver a la lista de pacientes</span>
+                  </button>
+                  <span className="text-[11px] font-bold text-blue-800 bg-blue-100/80 px-2.5 py-0.5 rounded-full truncate max-w-[130px]">
+                    {pacienteActivo.nombre}
+                  </span>
+                </div>
                 {/* Tarjeta Resumen del Paciente */}
                 <div className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">

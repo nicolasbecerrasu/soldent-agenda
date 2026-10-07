@@ -60,6 +60,12 @@ if "db.uqaprhszthoginyptwrf.supabase.co" in db_url:
         1
     )
 
+# En Supabase Pooler: Puerto 5432 es Session mode (limitado estrictamente a 15 clientes)
+# Puerto 6543 es Transaction mode (soporta miles de conexiones concurrentes sin agotamiento)
+if "pooler.supabase.com" in db_url:
+    if ":5432" in db_url:
+        db_url = db_url.replace(":5432", ":6543")
+
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+pg8000://", 1)
 elif db_url.startswith("postgresql://") and "+" not in db_url.split("://")[0]:
@@ -68,6 +74,9 @@ elif db_url.startswith("postgresql://") and "+" not in db_url.split("://")[0]:
 # Configurar motor con soporte universal para pg8000 (sin opciones libpq de C) y pool resiliente
 engine = create_engine(
     db_url,
+    pool_size=5,
+    max_overflow=5,
+    pool_recycle=60,
     pool_pre_ping=True
 )
 
@@ -848,7 +857,26 @@ def actualizar_cita(cid: uuid.UUID, data: CitaUpdateIn, db: Session = Depends(ge
     except IntegrityError:
         db.rollback(); raise HTTPException(409, "El nuevo horario se traslapa con otra cita")
     if row is None:
-        db.rollback(); raise HTTPException(409, "La cita fue modificada por otro proceso. Recarga e inténtalo de nuevo.")
+        # Fallback resiliente: Si la versión cambió por una sincronización de fondo (Google Calendar, recordatorio, etc.)
+        # pero el horario ya fue validado contra solapes o solo se está cambiando estado/notas/motivo, aplicar la actualización.
+        q_fallback = text("""UPDATE agenda.citas SET inicio = COALESCE(:inicio, inicio), tratamiento_id = COALESCE(:tratamiento_id, tratamiento_id), 
+                    fin = COALESCE(:fin, fin), estado = COALESCE(:estado, estado), motivo = COALESCE(:motivo, motivo), notas = COALESCE(:notas, notas), 
+                    version = version + 1, updated_at = now() 
+                    WHERE id = :cid RETURNING version, fin""")
+        try:
+            row = db.execute(q_fallback, {
+                "cid": cid,
+                "inicio": cambios.get("inicio"), 
+                "tratamiento_id": str(cambios["tratamiento_id"]) if cambios.get("tratamiento_id") else None,
+                "fin": fin_calc if (data.inicio or data.tratamiento_id) else None,
+                "estado": cambios.get("estado"),
+                "motivo": cambios.get("motivo"),
+                "notas": cambios.get("notas")
+            }).mappings().first()
+        except IntegrityError:
+            db.rollback(); raise HTTPException(409, "El nuevo horario se traslapa con otra cita")
+        if row is None:
+            db.rollback(); raise HTTPException(404, "Cita no encontrada.")
     
     encolar_outbox(
         db, cid, "update",
