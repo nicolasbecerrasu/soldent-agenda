@@ -167,7 +167,7 @@ export function App() {
                 }}
               />
             </div>
-            <div className="shrink-0">
+            <div className="shrink-0 hidden sm:block">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="text-base sm:text-xl font-extrabold tracking-tight text-slate-900">SOLDENT</span>
                 <span className="hidden sm:inline-flex text-[9px] sm:text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
@@ -251,7 +251,7 @@ export function App() {
                   api.logout();
                 }
               }}
-              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-colors shadow-2xs active:scale-95"
+              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-colors shadow-2xs active:scale-95 shrink-0"
               title="Bloquear acceso con PIN"
             >
               <Lock className="w-4 h-4" />
