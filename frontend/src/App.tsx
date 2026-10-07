@@ -156,7 +156,7 @@ export function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs navbar-top">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-14 sm:h-20 flex items-center justify-between gap-2 overflow-x-hidden">
           {/* Logo y Nombre Oficial */}
-          <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-3.5 shrink-0">
             <div className="h-9 sm:h-14 w-auto flex items-center justify-center p-1 bg-white rounded-xl border border-slate-100 shadow-2xs overflow-hidden shrink-0">
               <img
                 src="/images/logo-soldent.jpeg"
@@ -167,7 +167,7 @@ export function App() {
                 }}
               />
             </div>
-            <div className="truncate">
+            <div className="shrink-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="text-base sm:text-xl font-extrabold tracking-tight text-slate-900">SOLDENT</span>
                 <span className="hidden sm:inline-flex text-[9px] sm:text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
@@ -181,7 +181,7 @@ export function App() {
           </div>
 
           {/* Estado de sincronización y Acciones */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <div className="hidden lg:flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -198,7 +198,7 @@ export function App() {
               href="/qr?pin=1104"
               target="_blank"
               rel="noreferrer"
-              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 sm:px-3 rounded-xl border transition-all shadow-2xs active:scale-95 ${
+              className={`inline-flex items-center gap-1.5 text-xs px-2 py-1.5 sm:px-3 rounded-xl border transition-all shadow-2xs active:scale-95 shrink-0 ${
                 whatsappConectado
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
                   : 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
@@ -221,7 +221,7 @@ export function App() {
             <button
               onClick={cargarDatos}
               disabled={cargando}
-              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shadow-2xs active:scale-95"
+              className="p-2 sm:p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shadow-2xs active:scale-95 shrink-0"
               title="Actualizar datos"
             >
               <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} />
@@ -230,12 +230,11 @@ export function App() {
             {/* Botón Controles Ortodoncia */}
             <button
               onClick={() => setModalOrtodonciaAbierto(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-all active:scale-95 shrink-0"
+              className="p-2 sm:px-3 sm:py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs transition-all active:scale-95 shrink-0 flex items-center gap-1.5 text-xs font-bold"
               title="Seguimiento y Control Mensual de Ortodoncia"
             >
-              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+              <Sparkles className="w-4 h-4 text-purple-600" />
               <span className="hidden sm:inline">Controles Ortodoncia</span>
-              <span className="sm:hidden">Ortodoncia</span>
             </button>
 
             {/* Botón Bloquear / Cerrar Sesión PIN */}
