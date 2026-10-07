@@ -154,14 +154,14 @@ export function App() {
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans pb-20 md:pb-6">
       {/* Header Superior con Logo Oficial y Soporte para Safe Area (iOS Dynamic Island / Notch) */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs navbar-top">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 h-14 sm:h-20 flex items-center justify-between gap-2 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-20 flex items-center justify-between gap-1.5 sm:gap-2 overflow-x-hidden">
           {/* Logo y Nombre Oficial */}
-          <div className="flex items-center gap-1.5 sm:gap-3.5 shrink-0">
-            <div className="h-9 sm:h-14 w-auto flex items-center justify-center p-1 bg-white rounded-xl border border-slate-100 shadow-2xs overflow-hidden shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
+            <div className="h-11 sm:h-15 px-1.5 sm:px-2.5 flex items-center justify-center bg-white rounded-xl border border-slate-100 shadow-2xs overflow-hidden shrink-0">
               <img
                 src="/images/logo-soldent.jpeg"
                 alt="Logo Oficial Soldent"
-                className="h-7 sm:h-12 w-auto object-contain"
+                className="h-9 sm:h-13 w-auto object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}

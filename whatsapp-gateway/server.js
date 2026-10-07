@@ -210,20 +210,25 @@ function getHtmlPage() {
   <title>Soldent WhatsApp Gateway</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: white; padding: 32px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; max-width: 460px; width: 100%; border: 1px solid #e2e8f0; }
-    .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: #ecfdf5; color: #059669; font-weight: 600; font-size: 14px; margin-bottom: 16px; }
+    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { position: relative; background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); text-align: center; max-width: 460px; width: 100%; border: 1px solid #e2e8f0; box-sizing: border-box; }
+    .btn-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; font-weight: 700; border: 1px solid #cbd5e1; transition: all 0.2s; z-index: 10; }
+    .btn-close:hover { background: #e2e8f0; color: #0f172a; }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: #ecfdf5; color: #059669; font-weight: 600; font-size: 14px; margin-bottom: 16px; margin-top: 4px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
     h1 { font-size: 20px; margin: 0 0 8px; color: #0f172a; }
     p { color: #64748b; font-size: 14px; line-height: 1.5; margin: 0; }
     .badge { margin-top: 14px; display: inline-block; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #334155; }
     .info-box { margin-top: 18px; padding: 12px; border-radius: 12px; font-size: 13px; text-align: left; }
     .info-box.ok { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
-    .btn-reset { margin-top: 24px; display: inline-block; padding: 8px 16px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; font-size: 13px; cursor: pointer; text-decoration: none; }
+    .btn-back-agenda { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 12px 18px; background: #2563eb; color: white; border-radius: 14px; font-size: 14px; font-weight: 700; text-decoration: none; box-shadow: 0 4px 12px rgba(37,99,235,0.25); transition: background 0.2s; margin-top: 20px; }
+    .btn-back-agenda:hover { background: #1d4ed8; }
+    .btn-reset { margin-top: 14px; display: inline-block; padding: 8px 16px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; cursor: pointer; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="card">
+    <a href="/" class="btn-close" aria-label="Cerrar y volver a la agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">✕</a>
     <div class="status"><span class="dot"></span> Conectado y Activo</div>
     <h1>WhatsApp Vinculado con Éxito</h1>
     <p>La pasarela de Soldent está respondiendo mensajes de WhatsApp en tiempo real con IA.</p>
@@ -235,7 +240,9 @@ function getHtmlPage() {
       <b>👩‍⚕️ Celular de la Dra. Pamela:</b> +591 78472875 (Independiente / Libre del bot)
     </div>
 
-    <div style="margin-top: 20px;">
+    <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
+
+    <div>
       <a href="/reset" class="btn-reset" onclick="return confirm('¿Deseas desvincular y escanear un nuevo QR?')">Desvincular / Escanear nuevo QR</a>
     </div>
   </div>
@@ -252,9 +259,11 @@ function getHtmlPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="refresh" content="5">
   <style>
-    body { font-family: system-ui, sans-serif; background: #f0fdf4; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 460px; width: 100%; border: 1px solid #bbf7d0; }
-    .header { margin-bottom: 16px; }
+    body { font-family: system-ui, sans-serif; background: #f0fdf4; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { position: relative; background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 460px; width: 100%; border: 1px solid #bbf7d0; box-sizing: border-box; }
+    .btn-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; font-weight: 700; border: 1px solid #cbd5e1; transition: all 0.2s; z-index: 10; }
+    .btn-close:hover { background: #e2e8f0; color: #0f172a; }
+    .header { margin-bottom: 16px; margin-top: 4px; }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; }
     h1 { font-size: 20px; margin: 0 0 6px; color: #0f172a; }
     p { color: #64748b; font-size: 13px; line-height: 1.4; margin: 0; }
@@ -263,10 +272,13 @@ function getHtmlPage() {
     .alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 12px; text-align: left; font-size: 12px; color: #991b1b; margin-bottom: 14px; line-height: 1.4; }
     .bot-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 12px; text-align: left; font-size: 12px; color: #1e40af; margin-bottom: 14px; line-height: 1.4; }
     ol { text-align: left; font-size: 13px; color: #334155; line-height: 1.6; padding-left: 20px; margin: 16px 0 0; }
+    .btn-back-agenda { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 12px 18px; background: #2563eb; color: white; border-radius: 14px; font-size: 14px; font-weight: 700; text-decoration: none; box-shadow: 0 4px 12px rgba(37,99,235,0.25); transition: background 0.2s; margin-top: 18px; }
+    .btn-back-agenda:hover { background: #1d4ed8; }
   </style>
 </head>
 <body>
   <div class="card">
+    <a href="/" class="btn-close" aria-label="Cerrar y volver a la agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">✕</a>
     <div class="header">
       <div class="badge">Soldent • Pasarela WhatsApp</div>
       <h1>Vincular Bot de WhatsApp</h1>
@@ -294,17 +306,26 @@ function getHtmlPage() {
       <li>Toca <b>Menú (⋮)</b> o <b>Ajustes</b> > <b>Dispositivos vinculados</b>.</li>
       <li>Toca <b>Vincular un dispositivo</b> y apunta la cámara a este código QR.</li>
     </ol>
+
+    <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
   </div>
 </body>
 </html>`;
   }
 
-  return `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="3"><title>Soldent - Generando QR</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px;">
-    <div style="background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 440px; width: 100%; border: 1px solid #e2e8f0;">
-      <div style="font-size: 38px; margin-bottom: 12px;">⏳</div>
+  return `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="3"><title>Soldent - Generando QR</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>
+    body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { position: relative; background: white; padding: 32px 24px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; max-width: 440px; width: 100%; border: 1px solid #e2e8f0; box-sizing: border-box; }
+    .btn-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; font-weight: 700; border: 1px solid #cbd5e1; transition: all 0.2s; z-index: 10; }
+    .btn-back-agenda { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 12px 18px; background: #2563eb; color: white; border-radius: 14px; font-size: 14px; font-weight: 700; text-decoration: none; box-shadow: 0 4px 12px rgba(37,99,235,0.25); transition: background 0.2s; margin-top: 18px; }
+  </style></head><body>
+    <div class="card">
+      <a href="/" class="btn-close" aria-label="Cerrar y volver a la agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">✕</a>
+      <div style="font-size: 38px; margin-bottom: 12px; margin-top: 4px;">⏳</div>
       <h2 style="font-size: 20px; margin: 0 0 8px; color: #0f172a;">Preparando Código QR...</h2>
       <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0 0 20px;">Conectando con la red de WhatsApp. Esta pantalla se actualiza automáticamente cada 3 segundos.</p>
-      <div>
+      <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
+      <div style="margin-top: 14px;">
         <a href="/reset" style="display: inline-block; padding: 10px 18px; background: #fee2e2; color: #dc2626; border-radius: 12px; font-size: 13px; font-weight: 700; text-decoration: none; border: 1px solid #fca5a5;">
           🔄 Limpiar sesión y Forzar nuevo QR
         </a>

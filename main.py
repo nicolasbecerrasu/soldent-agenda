@@ -1984,18 +1984,22 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
     <title>Soldent - Acceso Seguro</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #f8fafc; }}
-        .card {{ background: #1e293b; padding: 32px 28px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: center; max-width: 360px; width: 90%; border: 1px solid #334155; }}
+        .card {{ position: relative; background: #1e293b; padding: 32px 28px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: center; max-width: 360px; width: 90%; border: 1px solid #334155; }}
+        .btn-close {{ position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; background: #334155; color: #94a3b8; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 16px; font-weight: 700; border: 1px solid #475569; }}
+        .btn-close:hover {{ background: #475569; color: #f8fafc; }}
         h2 {{ color: #38bdf8; margin: 0 0 8px 0; font-size: 22px; }}
         p {{ color: #94a3b8; font-size: 14px; margin: 0 0 20px 0; line-height: 1.4; }}
         input {{ width: 100%; box-sizing: border-box; padding: 14px; font-size: 20px; text-align: center; letter-spacing: 6px; border: 2px solid #334155; border-radius: 12px; margin-bottom: 16px; background: #0f172a; color: #f8fafc; outline: none; }}
         input:focus {{ border-color: #38bdf8; }}
         button {{ width: 100%; background: #0284c7; color: white; padding: 14px; font-size: 16px; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: background 0.2s; }}
         button:hover {{ background: #0369a1; }}
+        .btn-back {{ display: inline-block; margin-top: 16px; color: #38bdf8; text-decoration: none; font-size: 13px; font-weight: 600; }}
         .error {{ color: #f87171; font-size: 13px; margin-top: 12px; font-weight: 500; }}
     </style>
 </head>
 <body>
     <div class="card">
+        <a href="/" class="btn-close" aria-label="Cerrar y volver a la agenda" onclick="if (window.opener) {{ window.close(); return false; }} else if (window.history.length > 1) {{ window.history.back(); return false; }}">✕</a>
         <h2>🔒 Soldent - Acceso Seguro</h2>
         <p>Ingresa el PIN de la Doctora para ver o administrar la vinculación de WhatsApp:</p>
         <form method="GET" action="{accion}">
@@ -2003,6 +2007,9 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
             <button type="submit">Desbloquear</button>
             {err_div}
         </form>
+        <div>
+            <a href="/" class="btn-back" onclick="if (window.opener) {{ window.close(); return false; }} else if (window.history.length > 1) {{ window.history.back(); return false; }}">← Volver a la Agenda</a>
+        </div>
     </div>
 </body>
 </html>"""
