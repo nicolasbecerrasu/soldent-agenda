@@ -37,7 +37,8 @@ class Settings:
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
-    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "https://soldent-agenda.onrender.com")
+    RECORDATORIO_HORAS: int = int(os.getenv("RECORDATORIO_HORAS", "4"))
     RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
     RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
     DOCTORA_PIN: str = os.getenv("DOCTORA_PIN", "1104")
@@ -750,11 +751,7 @@ def crear_cita(data: CitaIn, db: Session = Depends(get_db), _auth: bool = Depend
     ahora_utc = datetime.now(timezone.utc)
     inicio_utc = data.inicio.astimezone(timezone.utc) if data.inicio.tzinfo else data.inicio.replace(tzinfo=timezone.utc)
 
-    # 4. Regla para citas inmediatas (< 3 horas):
-    # Si un paciente solicita un espacio libre que inicie en menos de 3 horas:
-    # - Guarda la cita directamente con estado = 'confirmada'
-    # - Marca recordatorio_enviado = TRUE para que el worker de recordatorios no envíe mensaje redundante
-    # - Encola la sincronización inmediata a Google Calendar para el iPhone de la doctora
+    # 4. Citas que inician en menos de 3 horas se guardan como confirmadas directamente
     es_inmediata = (inicio_utc - ahora_utc) < timedelta(hours=3)
     estado_inicial = "confirmada" if es_inmediata else "pendiente"
 
@@ -766,7 +763,7 @@ def crear_cita(data: CitaIn, db: Session = Depends(get_db), _auth: bool = Depend
         motivo=data.motivo,
         notas=data.notas,
         estado=estado_inicial,
-        recordatorio_enviado=es_inmediata
+        recordatorio_enviado=(inicio_utc <= ahora_utc)
     )
     token = generar_token_respuesta(db, cita)
     try:
@@ -1630,6 +1627,14 @@ def worker_sync_inverso_google(db: Session):
                     select(Paciente).where(func.lower(Paciente.nombre) == nombre_paciente.lower())
                 ).scalars().first()
 
+            # Búsqueda inteligente por nombre limpio si el título contiene sufijos clínicos ("ort", "15d", etc.)
+            if not paciente:
+                nombre_limpio = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior)\b", "", nombre_paciente).strip()
+                if nombre_limpio:
+                    paciente = db.execute(
+                        select(Paciente).where(func.lower(Paciente.nombre) == nombre_limpio.lower())
+                    ).scalars().first()
+
             if not paciente:
                 paciente = Paciente(
                     nombre=nombre_paciente,
@@ -1638,6 +1643,20 @@ def worker_sync_inverso_google(db: Session):
                 )
                 db.add(paciente)
                 db.flush()
+
+            # Si el paciente no tiene teléfono, intentar heredar de otro registro con el mismo nombre
+            if not paciente.telefono:
+                nom_base = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior)\b", "", paciente.nombre).strip().lower()
+                candidato = db.execute(
+                    select(Paciente).where(
+                        Paciente.telefono.isnot(None),
+                        func.lower(Paciente.nombre).like(f"%{nom_base}%")
+                    )
+                ).scalars().first()
+                if candidato and candidato.telefono:
+                    paciente.telefono = candidato.telefono
+                    print(f"📞 [Sync Inverso Google] Teléfono {candidato.telefono} vinculado a paciente '{paciente.nombre}'")
+                    db.flush()
 
             # Detección inteligente de tratamiento según el motivo / resumen de Google Calendar
             texto_eval = f"{summary} {descripcion}".lower()
@@ -1681,7 +1700,7 @@ def worker_sync_inverso_google(db: Session):
                 motivo=summary,
                 notas="Sincronizado automáticamente desde iPhone (Google Calendar)",
                 google_event_id=gid,
-                recordatorio_enviado=True
+                recordatorio_enviado=(dt_inicio <= ahora_utc)
             )
             generar_token_respuesta(db, nueva_cita)
 
@@ -1703,30 +1722,79 @@ def worker_sync_inverso_google(db: Session):
 
 def worker_recordatorios(db: Session):
     ahora = datetime.now(timezone.utc)
-    # Detecta citas pendientes/confirmadas que inicien dentro de las próximas 3 horas (hasta ahora + 3h)
-    # y cuyo inicio sea futuro (inicio > ahora), sin recordatorio enviado previamente.
-    # Al ser idempotente con recordatorio_enviado y NotificacionEnviada, resiste reinicios o caídas temporales.
+    horas_anticipacion = int(getattr(settings, "RECORDATORIO_HORAS", 4))
+
+    # 1. Sanar automáticamente citas futuras bloqueadas indebidamente
+    try:
+        db.execute(text("""
+            UPDATE agenda.citas c
+            SET recordatorio_enviado = FALSE
+            WHERE c.inicio > :ahora
+              AND c.recordatorio_enviado = TRUE
+              AND NOT EXISTS (
+                  SELECT 1 FROM agenda.notificaciones_enviadas n
+                  WHERE n.cita_id = c.id AND n.tipo = 'recordatorio' AND n.estado = 'enviado'
+              )
+        """), {"ahora": ahora})
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # 2. Vincular automáticamente teléfonos faltantes desde fichas coincidentes
+    try:
+        db.execute(text("""
+            UPDATE agenda.pacientes p_sin
+            SET telefono = p_con.telefono
+            FROM agenda.pacientes p_con
+            WHERE p_sin.telefono IS NULL
+              AND p_con.telefono IS NOT NULL
+              AND p_sin.id != p_con.id
+              AND (
+                  lower(p_sin.nombre) = lower(p_con.nombre)
+                  OR lower(p_sin.nombre) LIKE lower(concat(p_con.nombre, '%'))
+                  OR lower(p_con.nombre) LIKE lower(concat(p_sin.nombre, '%'))
+              )
+        """))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # 3. Detectar citas pendientes o confirmadas (pacientes activos) en la ventana de recordatorio
     rows = db.execute(
         select(Cita, Paciente)
         .join(Paciente, Cita.paciente_id == Paciente.id)
         .where(
             Cita.estado.in_(["pendiente", "confirmada"]),
             Cita.recordatorio_enviado == False,
-            Cita.inicio <= ahora + timedelta(hours=3),
+            Cita.inicio <= ahora + timedelta(hours=horas_anticipacion),
             Cita.inicio > ahora
         )
     ).all()
+
     for cita, paciente in rows:
+        # Si el paciente no tiene teléfono en esta ficha, intentar recuperarlo de un registro previo
+        if not paciente.telefono:
+            nom_base = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior)\b", "", paciente.nombre).strip().lower()
+            candidato = db.execute(
+                select(Paciente).where(
+                    Paciente.telefono.isnot(None),
+                    func.lower(Paciente.nombre).like(f"%{nom_base}%")
+                )
+            ).scalars().first()
+            if candidato and candidato.telefono:
+                paciente.telefono = candidato.telefono
+                db.commit()
+
         if not paciente.telefono or not es_telefono_bolivia_valido(paciente.telefono):
-            print(f"[WhatsApp] Omitiendo recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido ({paciente.telefono}).")
-            cita.recordatorio_enviado = True
-            db.commit()
+            print(f"[WhatsApp] Pendiente recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido registrado ({paciente.telefono}).")
+            # NO marcar recordatorio_enviado=True para que cuando se registre el número se pueda enviar de inmediato
             continue
 
         if db.execute(select(NotificacionEnviada).where(NotificacionEnviada.cita_id == cita.id, NotificacionEnviada.tipo == "recordatorio", NotificacionEnviada.estado == "enviado")).scalar_one_or_none():
             cita.recordatorio_enviado = True
             db.commit()
             continue
+
         token = str(uuid.uuid4())
         cita.token_recordatorio_hash = hash_token(token)
         ya = NotificacionEnviada(cita_id=cita.id, tipo="recordatorio", destino=paciente.telefono)
@@ -1736,23 +1804,32 @@ def worker_recordatorios(db: Session):
             tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
             dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
             hora_str = dt_bol.strftime("%H:%M")
-            base_url = getattr(settings, "PUBLIC_BASE_URL", "http://192.168.0.6:8000")
+            hora_12 = dt_bol.strftime("%I:%M %p").lstrip("0")
+            dias_esp = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dia_str = dias_esp[dt_bol.weekday()]
+            fecha_str = dt_bol.strftime("%d/%m")
+
+            base_url = getattr(settings, "PUBLIC_BASE_URL", "https://soldent-agenda.onrender.com").rstrip("/")
             link = f"{base_url}/r/{token}"
+            estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
+
             mensaje = (
-                f"🦷 *SOLDENT - Recordatorio de Cita*\n"
-                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta odontológica programada con la *Dra. Pamela Pinto Suárez* para las *{hora_str}*.\n\n"
+                f"🦷 *SOLDENT - Recordatorio de Cita Odontológica*\n\n"
+                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para hoy *{dia_str} {fecha_str}* a las *{hora_str}* ({hora_12}).\n\n"
                 f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.\n\n"
-                f"👉 Por favor confirme o cancele su asistencia en este enlace:\n"
+                f"👉 Por favor confirme o gestione su asistencia en este enlace:\n"
                 f"{link}\n\n"
-                f"¡Le esperamos!"
+                f"¡Le esperamos! ✨"
             )
+
+            gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")).rstrip("/")
             try:
                 httpx.post(
-                    "http://127.0.0.1:8080/send-message",
+                    f"{gateway_url}/send-message",
                     json={"number": paciente.telefono, "text": mensaje, "message": mensaje},
-                    timeout=5.0
+                    timeout=6.0
                 )
-                print(f"[WhatsApp] Recordatorio de 3 horas enviado a {paciente.telefono}")
+                print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono})")
             except Exception as err_w:
                 print(f"[WhatsApp Error] No se pudo enviar a {paciente.telefono}: {err_w}")
 
