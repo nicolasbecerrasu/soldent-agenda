@@ -649,10 +649,13 @@ async function startBaileys() {
         // Resolve real phone if it is an LID
         const resolvedPhone = remoteJid.includes('@lid') ? resolveLidToPhone(remoteJid) : remoteJid;
 
-        // Detección de la Dra. Pamela (78472875)
+        // Detección de la Dra. Pamela (78472875) y de Nicolás Administrador (70277520)
         const isDoctor = remoteJid.includes('78472875') || (resolvedPhone && resolvedPhone.includes('78472875'));
+        const isAdmin = remoteJid.includes('70277520') || (resolvedPhone && resolvedPhone.includes('70277520'));
         if (isDoctor) {
           console.log(`[WhatsApp IN] 👩‍⚕️ Mensaje de la Dra. Pamela (+591 78472875) recibido: "${text.slice(0, 45)}" -> Asistente Personal.`);
+        } else if (isAdmin) {
+          console.log(`[WhatsApp IN] 👨‍💻 Mensaje del Administrador Nicolás (+591 70277520) recibido: "${text.slice(0, 45)}" -> Asistente Admin.`);
         } else {
           console.log(`[WhatsApp IN] De ${pushName} (${remoteJid} -> ${resolvedPhone}): ${text}`);
         }
@@ -663,8 +666,9 @@ async function startBaileys() {
             from: remoteJid,
             resolvedPhone: resolvedPhone,
             phone: (resolvedPhone || remoteJid).replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, ''),
-            name: isDoctor ? 'Dra. Pamela Pinto Suárez' : pushName,
+            name: isDoctor ? 'Dra. Pamela Pinto Suárez' : (isAdmin ? 'Nicolás Administrador' : pushName),
             isDoctor: isDoctor,
+            isAdmin: isAdmin,
             text: text
           });
 
