@@ -1,7 +1,7 @@
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from typing import Optional
 from zoneinfo import ZoneInfo
 import httpx
@@ -356,7 +356,12 @@ def worker_sync_inverso_google(db: Session):
         print(f"[Sync Inverso Google] Error en el ciclo de sondeo: {e}")
 
 def worker_recordatorios(db: Session):
-    ahora = datetime.now(timezone.utc)
+    import time as time_mod
+    ahora_utc = datetime.now(timezone.utc)
+    tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
+    ahora_bol = datetime.now(tz_bol)
+    hoy_bol = ahora_bol.date()
+    manana_bol = hoy_bol + timedelta(days=1)
     horas_anticipacion = int(getattr(settings, "RECORDATORIO_HORAS", 4))
 
     # 1. Sanar automáticamente citas futuras bloqueadas indebidamente
@@ -370,7 +375,7 @@ def worker_recordatorios(db: Session):
                   SELECT 1 FROM agenda.notificaciones_enviadas n
                   WHERE n.cita_id = c.id AND n.tipo = 'recordatorio' AND n.estado = 'enviado'
               )
-        """), {"ahora": ahora})
+        """), {"ahora": ahora_utc})
         db.commit()
     except Exception:
         db.rollback()
@@ -394,19 +399,37 @@ def worker_recordatorios(db: Session):
     except Exception:
         db.rollback()
 
-    # 3. Detectar citas pendientes o confirmadas (pacientes activos) en la ventana de recordatorio
+    # 3. Detectar citas pendientes o confirmadas futuras sin recordatorio enviado
     rows = db.execute(
         select(Cita, Paciente)
         .join(Paciente, Cita.paciente_id == Paciente.id)
         .where(
             Cita.estado.in_(["pendiente", "confirmada"]),
             Cita.recordatorio_enviado == False,
-            Cita.inicio <= ahora + timedelta(hours=horas_anticipacion),
-            Cita.inicio > ahora
+            Cita.inicio > ahora_utc
         )
+        .order_by(Cita.inicio)
     ).all()
 
+    # ¿Estamos en la ventana nocturna de las 8:30 PM (20:30) en adelante?
+    es_ventana_nocturna_2030 = (ahora_bol.hour == 20 and ahora_bol.minute >= 30) or (ahora_bol.hour > 20)
+
     for cita, paciente in rows:
+        dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
+        fecha_cita_bol = dt_bol.date()
+        hora_cita_bol = dt_bol.time()
+
+        # REGLA A: Citas del primer turno de la mañana del día siguiente (09:00 a 12:30)
+        # Se envían la noche anterior a las 8:30 PM (20:30)
+        es_cita_manana_siguiente = (fecha_cita_bol == manana_bol and hora_cita_bol <= time(12, 30))
+        debe_enviar_nocturno = es_cita_manana_siguiente and es_ventana_nocturna_2030
+
+        # REGLA B: Citas de hoy o ventana de anticipación estándar (4 horas antes de la cita)
+        debe_enviar_estandar = (cita.inicio <= ahora_utc + timedelta(hours=horas_anticipacion))
+
+        if not (debe_enviar_nocturno or debe_enviar_estandar):
+            continue
+
         if not paciente.telefono:
             nom_base = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior)\b", "", paciente.nombre).strip().lower()
             candidato = db.execute(
@@ -434,13 +457,18 @@ def worker_recordatorios(db: Session):
         db.add(ya)
         try:
             db.flush()
-            tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
-            dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
             hora_str = dt_bol.strftime("%H:%M")
             hora_12 = dt_bol.strftime("%I:%M %p").lstrip("0")
             dias_esp = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
             dia_str = dias_esp[dt_bol.weekday()]
             fecha_str = dt_bol.strftime("%d/%m")
+
+            if fecha_cita_bol == hoy_bol:
+                cuando_str = f"hoy *{dia_str} {fecha_str}*"
+            elif fecha_cita_bol == manana_bol:
+                cuando_str = f"mañana *{dia_str} {fecha_str}*"
+            else:
+                cuando_str = f"el *{dia_str} {fecha_str}*"
 
             base_url = getattr(settings, "PUBLIC_BASE_URL", "https://soldent-agenda.onrender.com").rstrip("/")
             link = f"{base_url}/r/{token}"
@@ -448,7 +476,7 @@ def worker_recordatorios(db: Session):
 
             mensaje = (
                 f"🦷 *SOLDENT - Recordatorio de Cita Odontológica*\n\n"
-                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para hoy *{dia_str} {fecha_str}* a las *{hora_str}* ({hora_12}).\n\n"
+                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).\n\n"
                 f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.\n\n"
                 f"👉 Por favor confirme o gestione su asistencia en este enlace:\n"
                 f"{link}\n\n"
@@ -460,15 +488,18 @@ def worker_recordatorios(db: Session):
                 httpx.post(
                     f"{gateway_url}/send-message",
                     json={"number": paciente.telefono, "text": mensaje, "message": mensaje},
-                    timeout=6.0
+                    timeout=8.0
                 )
-                print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono})")
+                print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono}) para {cuando_str} a las {hora_str}")
             except Exception as err_w:
                 print(f"[WhatsApp Error] No se pudo enviar a {paciente.telefono}: {err_w}")
 
-            ya.estado, ya.enviado_at = "enviado", ahora
+            ya.estado, ya.enviado_at = "enviado", ahora_utc
             cita.recordatorio_enviado = True
             db.commit()
+
+            # Pausa de cortesía anti-spam entre mensajes
+            time_mod.sleep(2.0)
         except IntegrityError:
             db.rollback()
 
