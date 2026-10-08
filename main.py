@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, JSON, BigInteger, Column, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, String, Text, create_engine, func, select, text, event
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -430,22 +430,32 @@ def obtener_sesion_baileys(db: Session = Depends(get_db)):
 
 @app.post("/api/internal/baileys-session")
 def guardar_archivo_sesion(item: SessionItemIn, db: Session = Depends(get_db)):
-    existente = db.get(WhatsAppSession, item.key)
-    if existente:
-        existente.value = item.value
-    else:
-        db.add(WhatsAppSession(key=item.key, value=item.value))
+    stmt = (
+        pg_insert(WhatsAppSession)
+        .values(key=item.key, value=item.value)
+        .on_conflict_do_update(
+            index_elements=["key"],
+            set_={"value": item.value, "updated_at": func.now()}
+        )
+    )
+    db.execute(stmt)
     db.commit()
     return {"ok": True, "key": item.key}
 
 @app.post("/api/internal/baileys-session/batch")
 def guardar_archivos_sesion_batch(data: SessionBatchIn, db: Session = Depends(get_db)):
-    for key, val in data.items.items():
-        existente = db.get(WhatsAppSession, key)
-        if existente:
-            existente.value = val
-        else:
-            db.add(WhatsAppSession(key=key, value=val))
+    if not data.items:
+        return {"ok": True, "total": 0}
+    values = [{"key": k, "value": v} for k, v in data.items.items()]
+    insert_stmt = pg_insert(WhatsAppSession).values(values)
+    stmt = insert_stmt.on_conflict_do_update(
+        index_elements=["key"],
+        set_={
+            "value": insert_stmt.excluded.value,
+            "updated_at": func.now()
+        }
+    )
+    db.execute(stmt)
     db.commit()
     return {"ok": True, "total": len(data.items)}
 
