@@ -18,3 +18,5 @@ services:
         sync: false
       - key: WHATSAPP_PHONE_NUMBER
         value: "+59162422577"
+      - key: DISABLE_WHATSAPP
+        value: "true"
