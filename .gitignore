@@ -30,7 +30,8 @@ scratch/
 whatsapp-qr.png
 whatsapp-qr.html
 
-# IDEs
+# IDEs y editores
 .vscode/
 .idea/
 *.swp
+~$*

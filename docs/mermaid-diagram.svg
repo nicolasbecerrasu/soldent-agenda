@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1672.5459999999998 954.3" width="1672.5459999999998" height="954.3" style="--bg:#1F1F1F;--fg:#CCCCCC;--line:#CCCCCC;--accent:#0078D4;--muted:#CCCCCCCC;--surface:#181818;--border:#CCCCCC;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="PACIENTES" data-label="👥 Pacientes">
+  <rect x="209.51800000000003" y="231.2" width="471.4219999999999" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="209.51800000000003" y="231.2" width="471.4219999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="221.51800000000003" y="245.2" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">👥 Pacientes</text>
+</g>
+<g class="subgraph" data-id="DOCTORA" data-label="👩‍⚕️ Dra. Pamela (iPhone 13)">
+  <rect x="203.30575000000022" y="40" width="535.1479999999999" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="203.30575000000022" y="40" width="535.1479999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="215.30575000000022" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">👩‍⚕️ Dra. Pamela (iPhone 13)</text>
+</g>
+<g class="subgraph" data-id="CLOUD_RENDER" data-label="☁️ Servidor en la Nube (Render.com - 24/7)">
+  <rect x="391.4404166666668" y="456.40000000000003" width="667.5459166666666" height="419.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="391.4404166666668" y="456.40000000000003" width="667.5459166666666" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="403.4404166666668" y="470.40000000000003" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">☁️ Servidor en la Nube (Render.com - 24/7)</text>
+</g>
+<g class="subgraph" data-id="SERVICIOS_EXTERNOS" data-label="🌐 Servicios Externos">
+  <rect x="708.94" y="241.2" width="892.6059999999999" height="110.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="708.94" y="241.2" width="892.6059999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="720.94" y="255.2" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">🌐 Servicios Externos</text>
+</g>
+<polyline class="edge" data-from="WA_PAC" data-to="GATEWAY" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="Mensajes WhatsApp" points="576.9045,324.1 576.9045,370.09999999999997 545.7520000000002,370.09999999999997 545.7520000000002,438.4 576.9045000000001,438.4 576.9045000000001,653.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="BACKEND" data-to="SUPABASE" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="544.3819166666667,860.3 544.3819166666666,906.3 1611.5459999999998,906.3 1611.5459999999998,223.2 1170.8796666666667,223.2 1170.8796666666667,287.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="WORKERS" data-to="SUPABASE" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="779.7436666666667,537.3000000000001 779.7436666666667,894.3 1624.5459999999998,894.3 1624.5459999999998,211.2 1064.7653333333333,211.2 1064.7653333333335,287.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="LINK_CONFIRM" data-to="BACKEND" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="1 Clic: Confirmar/Cancelar" points="343.1935,324.1 343.1935000000001,370.09999999999997 374.346,370.09999999999997 374.346,426.4 465.5946666666666,426.4 465.5946666666666,787.4000000000001 516.9936166666666,787.4000000000001 516.9936166666666,823.4000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="APP_PWA" data-to="BACKEND" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="Gestión de Citas y Pacientes" points="336.61075000000017,120.9 336.6107500000003,219.2 111.00000000000023,219.2 111.00000000000023,438.40000000000003 431.706366666667,438.40000000000003 431.7063666666669,799.4000000000001 462.21701666666695,799.4000000000001 462.21701666666695,823.4000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="GCAL_IPHONE" data-to="GOOGLE_API" data-style="solid" data-arrow-start="true" data-arrow-end="true" data-label="Sincronización Bidireccional" points="602.1847500000001,120.9 602.1847500000003,154.9 827.7955000000002,154.9 827.7955000000001,287.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="GOOGLE_API" data-to="WORKERS" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="827.7955000000001,324.1 827.7955000000001,438.4 858.948,438.4 858.948,438.4 842.8043333333335,438.4 842.8043333333333,500.40000000000003" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="UPTIME" data-to="BACKEND" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Mantiene servidor despierto 24/7" points="1445.27,324.1 1445.27,394.09999999999997 1414.1174999999998,394.09999999999997 1414.1174999999998,438.4 1041.9863333333333,438.4 1041.9863333333333,799.4000000000001 626.5468166666667,799.4000000000001 626.5468166666667,823.4000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="GATEWAY" data-to="BOT_IA" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="623.1691666666668,690.5 623.1691666666668,738.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="BOT_IA" data-to="BACKEND" data-style="solid" data-arrow-start="true" data-arrow-end="true" points="623.1691666666668,775.4000000000001 623.1691666666668,787.4000000000001 571.7702166666668,787.4000000000001 571.7702166666668,823.4000000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" marker-start="url(#arrowhead-start)" />
+<polyline class="edge" data-from="WORKERS" data-to="GATEWAY" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Envía WhatsApp 3h antes" points="905.8650000000001,537.3000000000001 905.8650000000001,549.3000000000001 881.5543333333335,549.3000000000001 881.5543333333335,617.6 669.4338333333335,617.6 669.4338333333335,653.6" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="WA_PAC" data-to="GATEWAY" data-label="Mensajes WhatsApp">
+  <rect x="488.2520000000002" y="377.1" width="114.47200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="545.4880000000002" y="392.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Mensajes WhatsApp</text>
+</g>
+<g class="edge-label" data-from="LINK_CONFIRM" data-to="BACKEND" data-label="1 Clic: Confirmar/Cancelar">
+  <rect x="305.346" y="377.1" width="137.04399999999998" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="373.868" y="392.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">1 Clic: Confirmar/Cancelar</text>
+</g>
+<g class="edge-label" data-from="APP_PWA" data-to="BACKEND" data-label="Gestión de Citas y Pacientes">
+  <rect x="36" y="401.1" width="149.518" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="110.759" y="416.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Gestión de Citas y Pacientes</text>
+</g>
+<g class="edge-label" data-from="GCAL_IPHONE" data-to="GOOGLE_API" data-label="Sincronización Bidireccional">
+  <rect x="750.2955000000002" y="161.9" width="154.864" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="827.7275000000002" y="177.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Sincronización Bidireccional</text>
+</g>
+<g class="edge-label" data-from="UPTIME" data-to="BACKEND" data-label="Mantiene servidor despierto 24/7">
+  <rect x="1327.1175" y="401.1" width="173.872" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1414.0535" y="416.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Mantiene servidor despierto 24/7</text>
+</g>
+<g class="edge-label" data-from="WORKERS" data-to="GATEWAY" data-label="Envía WhatsApp 3h antes">
+  <rect x="811.0543333333335" y="580.3000000000001" width="140.014" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="881.0613333333336" y="595.45" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Envía WhatsApp 3h antes</text>
+</g>
+<g class="node" data-id="WA_PAC" data-label="WhatsApp del Paciente" data-shape="rectangle">
+  <rect x="488.86899999999997" y="287.2" width="176.07099999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="576.9045" y="305.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">WhatsApp del Paciente</text>
+</g>
+<g class="node" data-id="LINK_CONFIRM" data-label="Enlace de Confirmación (/r/token)" data-shape="rectangle">
+  <rect x="225.51800000000003" y="287.2" width="235.35099999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="343.1935" y="305.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Enlace de Confirmación (/r/token)</text>
+</g>
+<g class="node" data-id="APP_PWA" data-label="App Web Soldent (PWA + PIN 1104)" data-shape="rectangle">
+  <rect x="219.30575000000022" y="84" width="234.60999999999993" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="336.61075000000017" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">App Web Soldent (PWA + PIN 1104)</text>
+</g>
+<g class="node" data-id="GCAL_IPHONE" data-label="Google Calendar Nativo de iPhone" data-shape="rectangle">
+  <rect x="481.9157500000001" y="84" width="240.53799999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="602.1847500000001" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Google Calendar Nativo de iPhone</text>
+</g>
+<g class="node" data-id="GATEWAY" data-label="1. Pasarela WhatsApp (Node.js + Baileys)" data-shape="rectangle">
+  <rect x="484.3751666666668" y="653.6" width="277.58799999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="623.1691666666668" y="672.0500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">1. Pasarela WhatsApp (Node.js + Baileys)</text>
+</g>
+<g class="node" data-id="BOT_IA" data-label="2. Asistente con IA (Python + Google Gemini)" data-shape="rectangle">
+  <rect x="476.59466666666674" y="738.5" width="293.149" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="623.1691666666668" y="756.95" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">2. Asistente con IA (Python + Google Gemini)</text>
+</g>
+<g class="node" data-id="BACKEND" data-label="3. Servidor Principal (FastAPI + Python)" data-shape="rectangle">
+  <rect x="407.4404166666668" y="823.4000000000001" width="273.8829999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="544.3819166666667" y="841.8500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">3. Servidor Principal (FastAPI + Python)</text>
+</g>
+<g class="node" data-id="WORKERS" data-label="4. Workers Automáticos (Recordatorios y Sincronización)" data-shape="rectangle">
+  <rect x="653.6223333333335" y="500.40000000000003" width="378.3639999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="842.8043333333335" y="518.85" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">4. Workers Automáticos (Recordatorios y Sincronización)</text>
+</g>
+<g class="node" data-id="UPTIME" data-label="UptimeRobot (Ping cada 5 min Anti-Sueño)" data-shape="rectangle">
+  <rect x="1304.9940000000001" y="287.2" width="280.5519999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1445.27" y="305.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">UptimeRobot (Ping cada 5 min Anti-Sueño)</text>
+</g>
+<g class="node" data-id="SUPABASE" data-label="Supabase PostgreSQL (Base de Datos Central)" data-shape="cylinder">
+  <rect x="958.6510000000001" y="294.2" width="318.34299999999996" height="36.900000000000006" fill="var(--_node-fill)" stroke="none" />
+  <line x1="958.6510000000001" y1="294.2" x2="958.6510000000001" y2="331.1" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <line x1="1276.9940000000001" y1="294.2" x2="1276.9940000000001" y2="331.1" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="1117.8225" cy="331.1" rx="159.17149999999998" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <ellipse cx="1117.8225" cy="294.2" rx="159.17149999999998" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1117.8225" y="312.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Supabase PostgreSQL (Base de Datos Central)</text>
+</g>
+<g class="node" data-id="GOOGLE_API" data-label="Google Cloud / Calendar API" data-shape="rectangle">
+  <rect x="724.94" y="287.2" width="205.71099999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="827.7955000000001" y="305.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Google Cloud / Calendar API</text>
+</g>
+</svg>
