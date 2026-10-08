@@ -330,6 +330,14 @@ function getHtmlPage() {
       <h2 style="font-size: 20px; margin: 0 0 8px; color: #0f172a;">Preparando Código QR...</h2>
       <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0 0 20px;">Conectando con la red de WhatsApp. Esta pantalla se actualiza automáticamente cada 3 segundos.</p>
       <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
+      <div style="margin-top: 14px;">
+        <form method="POST" action="/reset" onsubmit="return confirm('¿Deseas limpiar credenciales anteriores y forzar un nuevo código QR?');">
+          <input type="hidden" name="confirmar" value="si">
+          <button type="submit" style="display: inline-block; padding: 10px 18px; background: #fee2e2; color: #dc2626; border-radius: 12px; font-size: 13px; font-weight: 700; border: 1px solid #fca5a5; cursor: pointer; width: 100%;">
+            🔄 Limpiar y Forzar Nuevo QR
+          </button>
+        </form>
+      </div>
     </div>
   </body></html>`;
 }
