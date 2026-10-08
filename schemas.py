@@ -34,6 +34,7 @@ class CitaIn(BaseModel):
 class CitaUpdateIn(BaseModel):
     inicio: Optional[datetime] = None
     tratamiento_id: Optional[uuid.UUID] = None
+    duracion_min: Optional[int] = None
     estado: Optional[str] = None
     motivo: Optional[str] = None
     notas: Optional[str] = None

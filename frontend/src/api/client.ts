@@ -141,7 +141,7 @@ export const api = {
     return res.json();
   },
 
-  async actualizarCita(id: string, payload: { version: number; estado?: string; inicio?: string; tratamiento_id?: string; notas?: string; motivo?: string }): Promise<any> {
+  async actualizarCita(id: string, payload: { version: number; estado?: string; inicio?: string; tratamiento_id?: string; notas?: string; motivo?: string; duracion_min?: number }): Promise<any> {
     const url = getFullUrl(`/citas/${id}`);
     const res = await authFetch(url, {
       method: 'PATCH',

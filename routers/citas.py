@@ -228,10 +228,11 @@ def actualizar_cita(
     ini_actual = cambios.get("inicio") or cita.inicio
     trat_id = cambios.get("tratamiento_id") or cita.tratamiento_id
     trat = db.get(Tratamiento, trat_id) if trat_id else None
-    duracion = trat.duracion_min if trat else 30
+    duracion = cambios.get("duracion_min") or (trat.duracion_min if trat else 30)
     fin_calc = ini_actual + timedelta(minutes=duracion)
 
-    if data.inicio or data.tratamiento_id:
+    recalcula_tiempo = bool(data.inicio or data.tratamiento_id or data.duracion_min)
+    if recalcula_tiempo:
         validar_horario_soldent(ini_actual, fin_calc)
 
         solapada = db.execute(
@@ -258,7 +259,7 @@ def actualizar_cita(
             "version": data.version,
             "inicio": cambios.get("inicio"), 
             "tratamiento_id": str(cambios["tratamiento_id"]) if cambios.get("tratamiento_id") else None,
-            "fin": fin_calc if (data.inicio or data.tratamiento_id) else None,
+            "fin": fin_calc if recalcula_tiempo else None,
             "estado": cambios.get("estado"),
             "motivo": cambios.get("motivo"),
             "notas": cambios.get("notas")
@@ -276,7 +277,7 @@ def actualizar_cita(
                 "cid": cid,
                 "inicio": cambios.get("inicio"), 
                 "tratamiento_id": str(cambios["tratamiento_id"]) if cambios.get("tratamiento_id") else None,
-                "fin": fin_calc if (data.inicio or data.tratamiento_id) else None,
+                "fin": fin_calc if recalcula_tiempo else None,
                 "estado": cambios.get("estado"),
                 "motivo": cambios.get("motivo"),
                 "notas": cambios.get("notas")

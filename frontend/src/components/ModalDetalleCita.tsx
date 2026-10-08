@@ -19,7 +19,8 @@ import {
   Star,
   Stethoscope,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Layers
 } from 'lucide-react';
 import { ModalPagosPaciente } from './ModalPagosPaciente';
 
@@ -53,8 +54,9 @@ export const ModalDetalleCita: React.FC<Props> = ({
   const [resenaEnviada, setResenaEnviada] = useState(false);
   const [mensajeResena, setMensajeResena] = useState<string | null>(null);
 
-  // Panel de Tratamiento (Cambio y Selección Múltiple)
+  // Panel de Tratamiento (Cambio y Selección Individual o Múltiple)
   const [panelTratamientoAbierto, setPanelTratamientoAbierto] = useState(false);
+  const [modoMultipleTratamientos, setModoMultipleTratamientos] = useState(false);
   const [tratamientosSeleccionados, setTratamientosSeleccionados] = useState<string[]>(() => {
     return cita.tratamiento_id ? [cita.tratamiento_id] : [];
   });
@@ -75,18 +77,23 @@ export const ModalDetalleCita: React.FC<Props> = ({
       setTratamientosSeleccionados(cita.tratamiento_id ? [cita.tratamiento_id] : []);
       setTelefonoInput(cita.paciente.telefono || '');
       setPanelTratamientoAbierto(false);
+      setModoMultipleTratamientos(false);
     }
   }, [cita]);
 
   const toggleTratamiento = (tid: string) => {
-    setTratamientosSeleccionados((prev) => {
-      if (prev.includes(tid)) {
-        if (prev.length === 1) return prev; // mínimo 1 casilla
-        return prev.filter((id) => id !== tid);
-      } else {
-        return [...prev, tid];
-      }
-    });
+    if (modoMultipleTratamientos) {
+      setTratamientosSeleccionados((prev) => {
+        if (prev.includes(tid)) {
+          return prev.filter((id) => id !== tid);
+        } else {
+          return [...prev, tid];
+        }
+      });
+    } else {
+      // Modo individual: si ya está seleccionado, lo desmarca; sino selecciona exclusivamente este tratamiento
+      setTratamientosSeleccionados((prev) => (prev.includes(tid) ? [] : [tid]));
+    }
   };
 
   const duracionTotalCalculada = catalogoTratamientos
@@ -110,11 +117,15 @@ export const ModalDetalleCita: React.FC<Props> = ({
         version: cita.version,
         tratamiento_id: principal.id,
         motivo: nombres,
+        duracion_min: duracionTotalCalculada,
       });
 
       cita.version = res.version;
       cita.tratamiento_id = principal.id;
-      cita.tratamiento = principal;
+      cita.tratamiento = {
+        ...principal,
+        duracion_min: duracionTotalCalculada,
+      };
       cita.motivo = nombres;
       cita.fin = res.fin;
 
@@ -301,12 +312,63 @@ export const ModalDetalleCita: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Selector de Tratamientos con casillas de verificación múltiples */}
+            {/* Selector de Tratamientos con casillas de verificación múltiples o individuales */}
             {panelTratamientoAbierto && (
               <div className="pt-2 border-t border-slate-200/70 space-y-2.5 animate-in fade-in duration-150">
-                <p className="text-[11px] text-slate-600 font-semibold">
-                  Selecciona una o más casillas de tratamiento para este paciente:
-                </p>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-[11px] text-slate-600 font-semibold">
+                    {modoMultipleTratamientos
+                      ? 'Marca las casillas que deseas combinar:'
+                      : 'Elige el tratamiento (o combina varios si aplica):'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setModoMultipleTratamientos(!modoMultipleTratamientos)}
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border transition-all flex items-center gap-1 active:scale-95 cursor-pointer ${
+                      modoMultipleTratamientos
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Layers className="w-3 h-3" />
+                    {modoMultipleTratamientos ? '✓ Modo Combinado' : '+ Combinar varios'}
+                  </button>
+                </div>
+
+                {/* Pill resumen fijo de lo que está seleccionado */}
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-blue-200/90 text-xs">
+                  <span className="text-[11px] font-semibold text-slate-500">Seleccionado:</span>
+                  {tratamientosSeleccionados.length === 0 ? (
+                    <span className="text-xs text-slate-400 italic">Ningún tratamiento marcado</span>
+                  ) : (
+                    catalogoTratamientos
+                      .filter((t) => tratamientosSeleccionados.includes(t.id))
+                      .map((t) => (
+                        <span
+                          key={t.id}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-blue-200 text-blue-900 font-bold text-[11px]"
+                        >
+                          {t.nombre} <span className="text-[10px] text-blue-600 font-normal">({t.duracion_min}m)</span>
+                          {tratamientosSeleccionados.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTratamientosSeleccionados((prev) => prev.filter((id) => id !== t.id));
+                              }}
+                              className="text-blue-400 hover:text-red-600 font-bold ml-0.5 cursor-pointer"
+                              title="Quitar"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      ))
+                  )}
+                  <span className="text-[11px] font-bold text-emerald-700 ml-auto bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {duracionTotalCalculada > 0 ? `${duracionTotalCalculada} min total` : '0 min'}
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
                   {catalogoTratamientos.map((t) => {
@@ -316,7 +378,7 @@ export const ModalDetalleCita: React.FC<Props> = ({
                         key={t.id}
                         type="button"
                         onClick={() => toggleTratamiento(t.id)}
-                        className={`w-full text-left p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-2 transition-all ${
+                        className={`w-full text-left p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-2 transition-all cursor-pointer ${
                           estaSeleccionado
                             ? 'bg-blue-50/90 border-blue-400 text-blue-950 font-bold shadow-2xs'
                             : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
@@ -324,10 +386,12 @@ export const ModalDetalleCita: React.FC<Props> = ({
                       >
                         <div className="flex items-center gap-2 truncate">
                           <input
-                            type="checkbox"
+                            type={modoMultipleTratamientos ? "checkbox" : "radio"}
                             checked={estaSeleccionado}
                             onChange={() => {}}
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 pointer-events-none shrink-0"
+                            className={`w-4 h-4 text-blue-600 focus:ring-blue-500 pointer-events-none shrink-0 ${
+                              modoMultipleTratamientos ? 'rounded' : 'rounded-full'
+                            }`}
                           />
                           <span className="truncate">{t.nombre}</span>
                         </div>
@@ -347,14 +411,15 @@ export const ModalDetalleCita: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={handleGuardarTratamientos}
-                    disabled={guardandoTratamiento}
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors active:scale-95 shadow-sm"
+                    disabled={guardandoTratamiento || tratamientosSeleccionados.length === 0}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors active:scale-95 shadow-sm cursor-pointer disabled:opacity-50"
                   >
                     <Check className="w-3.5 h-3.5" />
                     {guardandoTratamiento ? 'Guardando...' : 'Aplicar Tratamiento'}
                   </button>
                 </div>
               </div>
+
             )}
           </div>
 
