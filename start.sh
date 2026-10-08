@@ -62,6 +62,12 @@ done
 
 # 6. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
 # (FastAPI ya está escuchando, por lo que restaurarSesionDesdeDB leerá Supabase al instante)
+if [ "$DISABLE_WHATSAPP" = "true" ]; then
+    echo "⏸️ Pasarela y Bot de WhatsApp desactivados en esta instancia (DISABLE_WHATSAPP=true)."
+    wait "$PID_BACKEND"
+    cleanup
+fi
+
 echo "📱 [2/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
 cd /app/whatsapp-gateway
 node --max-old-space-size=180 server.js &

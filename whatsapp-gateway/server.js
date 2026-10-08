@@ -516,6 +516,10 @@ app.post('/instance/updateProfilePicture/:instance', handleUpdateProfilePicture)
 app.post('/instance/updateProfilePicture', handleUpdateProfilePicture);
 
 async function startBaileys() {
+  if (process.env.DISABLE_WHATSAPP === 'true') {
+    console.log('⏸️ [WhatsApp Gateway] Desactivado por DISABLE_WHATSAPP=true (Modo Standby / Solo Web).');
+    return;
+  }
   try {
     await restaurarSesionDesdeDB();
 
@@ -566,8 +570,21 @@ async function startBaileys() {
         isConnected = false;
         const statusCode = (lastDisconnect?.error)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const isReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440;
 
         console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). Reconectando...`);
+
+        if (isReplaced) {
+          console.warn(`[WhatsApp Standby] ⚠️ Conexión tomada por otra instancia activa (código 440). Cediendo conexión durante 5 minutos para evitar colisión continua.`);
+          setTimeout(async () => {
+            console.log(`[WhatsApp Standby] Reintentando conexión tras período de cortesía...`);
+            try {
+              await restaurarSesionDesdeDB();
+            } catch (e) {}
+            startBaileys();
+          }, 300000);
+          return;
+        }
 
         // NUNCA borrar la sesión de la base de datos automáticamente ante un cierre de socket.
         // Los códigos 401/428 suelen ser rotaciones o microcortes de WhatsApp.
