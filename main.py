@@ -2041,8 +2041,40 @@ async def ver_qr_whatsapp(request: Request, pin: Optional[str] = None):
         return response
 
 @app.get("/reset", response_class=HTMLResponse)
+async def reset_whatsapp_confirm(request: Request):
+    """GET /reset solo muestra una página de confirmación, NUNCA borra la sesión para evitar pre-fetching de navegadores."""
+    return HTMLResponse(
+        content="""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Confirmar Reinicio - Soldent</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .card { background: white; padding: 32px 24px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); text-align: center; max-width: 400px; width: 100%; border: 1px solid #fee2e2; }
+        h2 { color: #dc2626; margin-top: 0; }
+        p { color: #64748b; font-size: 14px; line-height: 1.5; }
+        .btn-danger { background: #dc2626; color: white; border: none; padding: 12px 20px; border-radius: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; font-size: 14px; }
+        .btn-cancel { display: block; margin-top: 12px; color: #64748b; text-decoration: none; font-size: 13px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>⚠️ ¿Desvincular WhatsApp?</h2>
+        <p>Esta acción cerrará la sesión actual de WhatsApp y generará un nuevo código QR para escanear.</p>
+        <form method="POST" action="/reset">
+            <input type="hidden" name="confirmar" value="si">
+            <button type="submit" class="btn-danger">Sí, cerrar sesión y generar nuevo QR</button>
+        </form>
+        <a href="/qr" class="btn-cancel">← Cancelar y volver al código QR</a>
+    </div>
+</body>
+</html>"""
+    )
+
 @app.post("/reset", response_class=HTMLResponse)
-async def reset_whatsapp(request: Request, pin: Optional[str] = None, db: Session = Depends(get_db)):
+async def reset_whatsapp(request: Request, pin: Optional[str] = None, confirmar: Optional[str] = None, db: Session = Depends(get_db)):
     cookie_pin = request.cookies.get("soldent_admin_pin")
     es_valido = (pin and pin.strip() == settings.DOCTORA_PIN) or (cookie_pin and cookie_pin.strip() == settings.DOCTORA_PIN)
 
@@ -2058,7 +2090,7 @@ async def reset_whatsapp(request: Request, pin: Optional[str] = None, db: Sessio
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get("http://127.0.0.1:8080/reset")
+            resp = await client.post("http://127.0.0.1:8080/reset")
             response = HTMLResponse(content=resp.text, status_code=resp.status_code)
             response.set_cookie(key="soldent_admin_pin", value=settings.DOCTORA_PIN, max_age=86400, httponly=True)
             return response

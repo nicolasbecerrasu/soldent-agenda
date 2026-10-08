@@ -242,8 +242,13 @@ function getHtmlPage() {
 
     <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
 
-    <div>
-      <a href="/reset" class="btn-reset" onclick="return confirm('¿Deseas desvincular y escanear un nuevo QR?')">Desvincular / Escanear nuevo QR</a>
+    <div style="margin-top: 14px;">
+      <form method="POST" action="/reset" onsubmit="return confirm('¿Seguro que deseas desvincular y generar un nuevo código QR?');">
+        <input type="hidden" name="confirmar" value="si">
+        <button type="submit" class="btn-reset" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; cursor: pointer; padding: 8px 16px;">
+          Desvincular / Escanear nuevo QR
+        </button>
+      </form>
     </div>
   </div>
 </body>
@@ -325,11 +330,6 @@ function getHtmlPage() {
       <h2 style="font-size: 20px; margin: 0 0 8px; color: #0f172a;">Preparando Código QR...</h2>
       <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0 0 20px;">Conectando con la red de WhatsApp. Esta pantalla se actualiza automáticamente cada 3 segundos.</p>
       <a href="/" class="btn-back-agenda" onclick="if (window.opener) { window.close(); return false; } else if (window.history.length > 1) { window.history.back(); return false; }">← Volver a la Agenda Soldent</a>
-      <div style="margin-top: 14px;">
-        <a href="/reset" style="display: inline-block; padding: 10px 18px; background: #fee2e2; color: #dc2626; border-radius: 12px; font-size: 13px; font-weight: 700; text-decoration: none; border: 1px solid #fca5a5;">
-          🔄 Limpiar sesión y Forzar nuevo QR
-        </a>
-      </div>
     </div>
   </body></html>`;
 }
@@ -350,7 +350,13 @@ app.get('/status', (req, res) => {
   });
 });
 
-app.get('/reset', async (req, res) => {
+// GET /reset NUNCA debe borrar la sesión (evita prefetch de navegadores)
+app.get('/reset', (req, res) => {
+  res.redirect('/qr');
+});
+
+// POST /reset es la única vía para forzar un nuevo QR intencionalmente
+app.post('/reset', async (req, res) => {
   try {
     isConnected = false;
     currentQR = null;
@@ -364,7 +370,7 @@ app.get('/reset', async (req, res) => {
     }
     await borrarSesionEnDB();
     setTimeout(startBaileys, 1000);
-    res.send('<p>Sesión reiniciada. <a href="/">Volver a escanear QR</a></p><script>setTimeout(() => location.href="/", 1500);</script>');
+    res.send('<p>Sesión reiniciada. Generando nuevo QR...</p><script>setTimeout(() => location.href="/qr", 1500);</script>');
   } catch (err) {
     res.status(500).send('Error reiniciando sesión: ' + err.message);
   }
@@ -553,27 +559,18 @@ async function startBaileys() {
         const statusCode = (lastDisconnect?.error)?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
 
-        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). ¿Cierre de sesión manual (loggedOut)?: ${isLoggedOut}`);
+        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). Reconectando...`);
 
-        if (isLoggedOut) {
-          console.log('[WhatsApp] El usuario cerró sesión en su teléfono (loggedOut 401). Limpiando para nuevo QR...');
-          currentQR = null;
-          currentQRImage = null;
-          await borrarSesionEnDB();
+        // NUNCA borrar la sesión de la base de datos automáticamente ante un cierre de socket.
+        // Los códigos 401/428 suelen ser rotaciones o microcortes de WhatsApp.
+        // Si borramos la base de datos, forzamos un re-escaneo innecesario.
+        console.log(`[WhatsApp] Intentando reconectar automáticamente en 4s manteniendo la sesión en Supabase y disco...`);
+        setTimeout(async () => {
           try {
-            if (fs.existsSync(authPath)) {
-              fs.rmSync(authPath, { recursive: true, force: true });
-            }
-          } catch (e) {
-            console.error('Error limpiando auth_info_baileys:', e.message);
-          }
-          setTimeout(startBaileys, 2000);
-        } else {
-          // Para cualquier otro código (428 connectionClosed, 408 timedOut, 440 replaced, 515 restart):
-          // RECONECTAR manteniendo la sesión intacta en Supabase y disco
-          console.log(`[WhatsApp] Reconectando automáticamente a WhatsApp en 3s sin perder sesión (código: ${statusCode})...`);
-          setTimeout(startBaileys, 3000);
-        }
+            await restaurarSesionDesdeDB();
+          } catch (e) {}
+          startBaileys();
+        }, 4000);
       } else if (connection === 'open') {
         isConnected = true;
         currentQR = null;
