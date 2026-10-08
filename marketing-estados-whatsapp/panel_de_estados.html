@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Estados de WhatsApp - Soldent</title>
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --secondary: #0d9488;
+      --accent: #38bdf8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; }
+    .header {
+      background: linear-gradient(135deg, #0284c7, #0d9488);
+      color: white;
+      padding: 30px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.25);
+    }
+    .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+    .header p { opacity: 0.95; font-size: 15px; max-width: 700px; }
+    .actions-bar {
+      display: flex;
+      gap: 12px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .btn-wa { background: #25D366; color: white; }
+    .btn-wa:hover { background: #1eb956; transform: translateY(-1px); }
+    .btn-secondary { background: white; color: var(--primary-dark); }
+    .btn-secondary:hover { background: #f1f5f9; }
+
+    .stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      background: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      flex: 1;
+      min-width: 180px;
+    }
+    .stat-card .num { font-size: 24px; font-weight: 700; color: var(--primary); }
+    .stat-card .label { font-size: 13px; color: var(--text-muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+      transition: all 0.2s;
+      position: relative;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px -3px rgba(0,0,0,0.08); }
+    .card.completed {
+      border-color: #a7f3d0;
+      background: #f0fdf4;
+    }
+    .badge {
+      align-self: flex-start;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #e0f2fe;
+      color: #0369a1;
+      margin-bottom: 12px;
+    }
+    .card h3 { font-size: 17px; margin-bottom: 12px; color: var(--text); }
+    .section-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-top: 10px; margin-bottom: 4px; }
+    .box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #334155;
+      line-height: 1.4;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    .copy-btn {
+      background: white;
+      border: 1px solid var(--border);
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: #e0f2fe; }
+    .copy-btn.copied { background: #dcfce7; color: #166534; border-color: #86efac; }
+    .check-container {
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .check-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🦷 Panel de Estados de WhatsApp - SOLDENT</h1>
+    <p>Flujo "Cero Estrés" con 20 semanas de contenido animado 3D (Pixar) y voz en off femenina para mantener a Soldent siempre presente en los pacientes.</p>
+    <div class="actions-bar">
+      <a href="https://web.whatsapp.com" target="_blank" class="btn btn-wa">
+        💬 Abrir WhatsApp Web
+      </a>
+      <button class="btn btn-secondary" onclick="alert('Guarda tus videos .mp4 generados en la carpeta:\nmarketing-estados-whatsapp/videos/')">
+        📁 Carpeta de Videos
+      </button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="num" id="publishedCount">0 / 20</div>
+      <div class="label">Semanas Publicadas</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">5 Meses</div>
+      <div class="label">Duración del Calendario</div>
+    </div>
+    <div class="stat-card">
+      <div class="num">100% Seguro</div>
+      <div class="label">Sin riesgo de bloqueo de cuenta</div>
+    </div>
+  </div>
+
+  <div class="grid" id="calendarGrid"></div>
+
+  <script>
+    const videos = [
+      {
+        week: 1,
+        title: "El Baño de Burbujas",
+        category: "Higiene y Cepillado",
+        voice: "«¿Ya le diste a tus dientes su baño de burbujas hoy? Dos minutos de cepillado tres veces al día hacen que tu sonrisa brille. ¡En Soldent cuidamos de ti!»",
+        copy: "¿Ya le diste a tus dientes su baño de burbujas hoy? 🫧🦷 Recuerda cepillarte 3 veces al día. ¡Cuidamos tu sonrisa en Soldent!",
+        prompt: "3D Pixar animation style, adorable cute happy cartoon tooth character getting gently brushed by a soft friendly toothbrush, glowing blue pastel foam bubbles and sparkles floating around, cheerful clean dental clinic background, smooth 3D motion, vibrant pastel colors, vertical 9:16, 4k render, no human faces"
+      },
+      {
+        week: 2,
+        title: "El Escudo Anti-Dulces",
+        category: "Prevención de Caries",
+        voice: "«Tu cepillado diario es el mejor superpoder para tus dientes. Activa su escudo protector contra las caries y sonríe con confianza. ¡Mantenlos fuertes con Soldent!»",
+        copy: "¿Muchos dulces hoy? 🍭 Tu cepillo activa el escudo protector de tus dientes. ¡Mantenlos fuertes con Soldent! 🦸‍♂️🦷",
+        prompt: "3D Pixar cartoon style, cute little hero tooth wearing a blue flowing superhero cape and holding a glowing protective shield of light, gently bouncing away tiny harmless funny purple sugar monsters, bright colorful dental clinic room, uplifting cinematic motion, vertical 9:16, 4k render, no real people"
+      },
+      {
+        week: 3,
+        title: "El Hilo Dental Bailarín",
+        category: "Técnica de Hilo Dental",
+        voice: "«El cepillo solo limpia el sesenta por ciento de tus dientes; el hilo dental hace la magia en el resto. ¡No olvides pasarlo al menos una vez al día!»",
+        copy: "El cepillo no llega a todas partes 🧵✨ El hilo dental es el mejor amigo de tus encías. ¡Dedícale un minuto hoy!",
+        prompt: "3D Disney Pixar style cartoon, two cute smiling tooth characters standing happily together, a magical glowing dental floss smoothly dancing and cleaning between them with sparkling fairy dust, playful and satisfying, warm cheerful dental lighting, smooth CGI animation, vertical 9:16, no humans"
+      },
+      {
+        week: 4,
+        title: "El Brillo de Diamante",
+        category: "Profilaxis y Limpieza",
+        voice: "«Nada se compara con esa sensación de frescura después de una limpieza profesional. Devuélvele a tus dientes ese brillo natural en Soldent.»",
+        copy: "Esa sensación de frescura no tiene precio ✨ ¿Cuánto hace que no te haces una limpieza? Pide tu cita en Soldent 🗓️",
+        prompt: "3D Disney Pixar animation, ultra clean shiny white cartoon tooth spinning joyfully, bursting with bright sparkling diamond stars and golden light rays, feeling totally fresh, mint green pastel background, satisfying smooth 3D animation, vertical 9:16, no humans"
+      },
+      {
+        week: 5,
+        title: "Sonrisa con Brackets",
+        category: "Ortodoncia Soldent",
+        voice: "«Cada día es un paso más hacia la sonrisa de tus sueños. Luce tus brackets con orgullo; el resultado te va a encantar. En Soldent acompañamos tu cambio.»",
+        copy: "Cada día más cerca de la sonrisa de tus sueños ✨ Consulta por nuestros tratamientos de ortodoncia en Soldent 🦷📲",
+        prompt: "Cute 3D Pixar style animation, adorable happy cartoon tooth wearing colorful shiny dental braces, holding a small round dental mirror and smiling with pride, a tiny sparkle shines on the braces, joyful colorful background, smooth CGI animation, vertical 9:16, no real humans"
+      },
+      {
+        week: 6,
+        title: "Alineadores Invisibles",
+        category: "Ortodoncia Estética",
+        voice: "«¿Quieres alinear tus dientes de forma discreta y cómoda? Los alineadores invisibles son la tecnología que estabas buscando. Pregunta por ellos en Soldent.»",
+        copy: "Alinea tus dientes casi sin que nadie lo note 💎 Descubre los alineadores invisibles en Soldent. Agenda tu evaluación 📲",
+        prompt: "3D cartoon animation, cute cartoon tooth stepping into a crystal clear sparkling invisible aligner like putting on glass slippers, instantly glowing beautifully, modern high-tech dental clinic, soft futuristic lighting, smooth 3D render, vertical 9:16, no humans"
+      },
+      {
+        week: 7,
+        title: "Dientes de Estrella de Cine",
+        category: "Blanqueamiento",
+        voice: "«¿Tienes un evento especial o simplemente quieres deslumbrar al sonreír? Nuestro blanqueamiento seguro cuida tu esmalte y resalta tu luz. Ven a Soldent.»",
+        copy: "¡Haz que tu sonrisa sea inolvidable! ✨ Descubre nuestro blanqueamiento dental seguro y eficaz en Soldent 🕶️🦷",
+        prompt: "3D Pixar style render, happy cute tooth character wearing tiny retro sunglasses, holding a bright light wand that gently turns it shades whiter and dazzling with sparkles, cheerful fun aesthetic, clean modern setting, vertical 9:16, no real people"
+      },
+      {
+        week: 8,
+        title: "Cuidado de Encías",
+        category: "Salud Periodontal",
+        voice: "«Unas encías sanas nunca deben sangrar al cepillarte. Si notas sangrado o inflamación, no lo dejes pasar. En Soldent cuidamos la base de tu sonrisa.»",
+        copy: "¿Tus encías sangran al cepillarte? 🛑 No es normal. La salud de tus encías es la base de tus dientes. Consúltanos hoy mismo.",
+        prompt: "Cute 3D Pixar animation, happy healthy pink cartoon gums hugging cute white teeth warmly like a soft blanket, glowing with health and vitality, fresh water drops splashing gently, clean dental environment, vertical 9:16, no humans"
+      },
+      {
+        week: 9,
+        title: "El Café y las Manchas",
+        category: "Mitos y Hábitos",
+        voice: "«¿Amas el café o el té? Recuerda tomar un vaso de agua después para evitar que manchen tus dientes. ¡Pequeños hábitos cuidan grandes sonrisas con Soldent!»",
+        copy: "¿Amante del café? ☕ Cuida tu esmalte tomando un sorbo de agua después. ¡En Soldent te damos los mejores tips para tu sonrisa!",
+        prompt: "3D cartoon animation, cute cartoon tooth holding a miniature mug of coffee, gently rinsing with a glass of crystal clear water and staying brilliantly white, cheerful playful vibe, Pixar aesthetic, soft pastel colors, vertical 9:16, no humans"
+      },
+      {
+        week: 10,
+        title: "El Cepillo Duro es un Mito",
+        category: "Técnica de Cuidado",
+        voice: "«Mito dental: cepillarse más fuerte o con cepillos duros no limpia mejor, ¡puede desgastar tu esmalte! Elige siempre cepillos de cerdas suaves. Soldent te aconseja.»",
+        copy: "¿Cepillo duro o suave? ☁️ Las cerdas suaves limpian mejor y protegen tu esmalte. ¡Cuida tu sonrisa con Soldent!",
+        prompt: "3D Pixar render, cute tooth comparing a stiff scratchy broom against a soft fluffy cloud-like toothbrush, happily cuddling the ultra soft brush, friendly educational concept, bright lighting, vertical 9:16, no humans"
+      },
+      {
+        week: 11,
+        title: "Dientes Sensibles",
+        category: "Sensibilidad Dental",
+        voice: "«¿Sientes un corrientazo con el agua fría o un helado? La sensibilidad dental tiene solución. En Soldent te ayudamos a disfrutar de tus comidas sin dolor.»",
+        copy: "¿El frío o el calor te hacen saltar? 🍦 La sensibilidad dental se puede tratar. Agenda tu cita en Soldent y olvídate del dolor ❄️➡️☀️",
+        prompt: "Cute 3D animation, little cartoon tooth shivering slightly in a warm little wool scarf while holding an ice cream, then feeling relieved and warm under a gentle sunny glow, cute Pixar style, pastel colors, vertical 9:16, no humans"
+      },
+      {
+        week: 12,
+        title: "El Chequeo Semestral",
+        category: "Prevención Clave",
+        voice: "«¿Sabías que una visita cada seis meses puede ahorrarte grandes problemas en el futuro? Es hora de consentir tu sonrisa. Agenda tu chequeo en Soldent.»",
+        copy: "Tu sonrisa merece un chequeo cada 6 meses 🗓️🦷 ¿Cuándo fue tu última visita? Escríbenos y agenda en Soldent 📲",
+        prompt: "Cute 3D Pixar character animation, friendly little cartoon tooth holding a cute flip calendar, happily pointing at a marked date and waving friendly at the camera, warm soft lighting, modern dental office background, vertical 9:16, high detail, no humans"
+      },
+      {
+        week: 13,
+        title: "Cuidando a los Más Pequeños",
+        category: "Odontopediatría",
+        voice: "«Cuidar los dientes de leche asegura dientes definitivos fuertes y sanos. Haz que la visita al dentista sea una experiencia divertida para tus pequeños en Soldent.»",
+        copy: "¡Los dientes de leche también se cuidan! 👶🍼 Creemos sonrisas saludables desde la infancia. Conoce nuestra atención en Soldent.",
+        prompt: "3D Disney Pixar animation, cute baby cartoon tooth smiling with baby bubbles, playing with a tiny soft rubber toothbrush, joyful colorful nursery dental theme, soft pastel colors, warm and sweet, vertical 9:16, no real humans"
+      },
+      {
+        week: 14,
+        title: "El Monstruo del Sarro",
+        category: "Profilaxis Ultrasónica",
+        voice: "«El sarro no se puede quitar con el cepillado de casa. Solo una limpieza con ultrasonido profesional lo elimina sin dañar tus dientes. Visítanos en Soldent.»",
+        copy: "El sarro solo se elimina con una limpieza profesional 💎 No intentes remedios caseros. ¡Confía en los expertos de Soldent!",
+        prompt: "3D cartoon animation, silly little yellow chalk monster clinging to a tooth, getting gently dissolved by a friendly ultrasonic soundwave emitting soft blue ripples, leaving the tooth sparkling clean, Pixar style, vertical 9:16, no humans"
+      },
+      {
+        week: 15,
+        title: "Bruxismo y Estrés",
+        category: "Placas de Descanso",
+        voice: "«¿Te despiertas con dolor de mandíbula o dolor de cabeza? Podrías estar apretando los dientes por la noche. Una placa de descanso en Soldent te devolverá el sueño reparador.»",
+        copy: "¿Despiertas con tensión en la mandíbula? 🌙 Podrías tener bruxismo. Protege tus dientes mientras duermes en Soldent 💤",
+        prompt: "3D Pixar style render, sleepy cute cartoon tooth resting comfortably on a soft cloud pillow wearing a tiny clear nightguard, sleeping peacefully without grinding, warm night aesthetic with soft moon glow, vertical 9:16, no humans"
+      },
+      {
+        week: 16,
+        title: "El Agua es Vida para tu Boca",
+        category: "Defensa Natural",
+        voice: "«Beber suficiente agua estimula la saliva, que es la defensa natural número uno de tu boca contra las bacterias y los ácidos. ¡Toma agua y sonríe con Soldent!»",
+        copy: "El agua es la mejor defensa natural de tu boca 💧 Estimula la saliva y limpia restos de comida. ¡Mantén tu boca hidratada y sana!",
+        prompt: "Cute 3D animation, cartoon tooth taking a refreshing swim in crystal clear pure water drops, feeling energized and glowing, vibrant summer pastel colors, clean modern dental style, vertical 9:16, no humans"
+      },
+      {
+        week: 17,
+        title: "El Diente Reparado",
+        category: "Curaciones Estéticas",
+        voice: "«Si tienes una pequeña carie o una restauración rota, no esperes a que duela. Las resinas estéticas devuelven la forma y color natural de tu diente en minutos en Soldent.»",
+        copy: "Una curación a tiempo evita tratamientos complicados 🛠️ Devuelve la estética y fuerza a tus dientes en Soldent ✨",
+        prompt: "3D Disney Pixar animation, cute cartoon tooth with a tiny crack having a magical golden drop gently seal it seamlessly, transforming into a completely flawless polished tooth, sparkling with relief, warm studio lighting, vertical 9:16, no humans"
+      },
+      {
+        week: 18,
+        title: "El Poder de Sonreír Sin Miedo",
+        category: "Autoestima y Confianza",
+        voice: "«Sonreír con seguridad abre puertas, mejora tu estado de ánimo y transforma tu día. En Soldent trabajamos cada día para que nunca dejes de sonreír.»",
+        copy: "Una sonrisa segura lo cambia todo ✨ No escondas tu risa. En Soldent diseñamos la sonrisa que mereces tener 🦷❤️",
+        prompt: "3D Pixar style render, radiant cartoon tooth standing proudly on a little podium with confetti falling, beaming with confidence, joyful celebration atmosphere, warm bright lighting, vertical 9:16, no real humans"
+      },
+      {
+        week: 19,
+        title: "El Miedo al Dentista es Pasado",
+        category: "Atención Sin Dolor",
+        voice: "«¿Tienes miedo de ir al dentista? En Soldent entendemos tu tranquilidad. Te brindamos una atención cercana, moderna y sin dolor para que te sientas como en casa.»",
+        copy: "El dentista ya no tiene por qué ser incómodo 💆‍♀️ En Soldent cuidamos de ti con calidez y tecnología sin dolor. ¡Ven a conocernos!",
+        prompt: "Cute 3D animation, friendly cartoon tooth enjoying a gentle massage and calming tea in a relaxing spa-like dental clinic, peaceful vibes, soft pastel ambient lighting, vertical 9:16, no humans"
+      },
+      {
+        week: 20,
+        title: "Tu Sonrisa, Nuestra Pasión",
+        category: "Branding Soldent",
+        voice: "«Cinco meses cuidando tu sonrisa, y esto es solo el comienzo. Gracias por confiar tu salud dental en la familia Soldent. ¡Nos vemos en tu próxima cita!»",
+        copy: "Tu sonrisa es nuestra mayor motivación 🌟 Gracias por confiar tu salud dental en la familia Soldent. ¡Estamos para ti siempre! 🦷💙",
+        prompt: "3D Pixar animation finale, a family of happy shiny cartoon teeth hugging together with sparkling hearts and stars floating around, a dental mirror forming the Soldent smile emblem in gold, heartwarming, cinematic lighting, vertical 9:16, no humans"
+      }
+    ];
+
+    const container = document.getElementById('calendarGrid');
+
+    function copyText(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.innerHTML;
+        btn.classList.add('copied');
+        btn.innerHTML = '✓ ¡Copiado!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = originalText;
+        }, 1800);
+      });
+    }
+
+    function toggleWeek(week) {
+      const current = JSON.parse(localStorage.getItem('soldent_completed_weeks') || '[]');
+      const index = current.indexOf(week);
+      if (index === -1) {
+        current.push(week);
+      } else {
+        current.splice(index, 1);
+      }
+      localStorage.setItem('soldent_completed_weeks', JSON.stringify(current));
+      renderCards();
+    }
+
+    function renderCards() {
+      const completed = JSON.parse(localStorage.getItem('soldent_completed_weeks') || '[]');
+      document.getElementById('publishedCount').innerText = `${completed.length} / 20`;
+      container.innerHTML = '';
+
+      videos.forEach(v => {
+        const isDone = completed.includes(v.week);
+        const card = document.createElement('div');
+        card.className = `card ${isDone ? 'completed' : ''}`;
+        card.innerHTML = `
+          <div class="badge">Semana ${v.week} • ${v.category}</div>
+          <h3>${v.title}</h3>
+          
+          <div class="section-title">🎙️ Voz en Off (Femenina)</div>
+          <div class="box">${v.voice}</div>
+          <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(v.voice)})">📋 Copiar Voz</button>
+
+          <div class="section-title">📲 Texto Estado WhatsApp</div>
+          <div class="box">${v.copy}</div>
+          <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(v.copy)})">📋 Copiar Estado</button>
+
+          <div class="section-title">🎬 Prompt Video 3D</div>
+          <div class="box" style="font-family: monospace; font-size: 11px;">${v.prompt}</div>
+          <button class="copy-btn" onclick="copyText(this, ${JSON.stringify(v.prompt)})">📋 Copiar Prompt</button>
+
+          <div class="check-container">
+            <label class="check-label">
+              <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleWeek(${v.week})">
+              ${isDone ? '✅ Publicado esta semana' : 'Marcar como publicado'}
+            </label>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    renderCards();
+  </script>
+</body>
+</html>
