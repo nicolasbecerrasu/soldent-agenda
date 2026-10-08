@@ -53,10 +53,10 @@ export const ModalDetalleCita: React.FC<Props> = ({
   const [resenaEnviada, setResenaEnviada] = useState(false);
   const [mensajeResena, setMensajeResena] = useState<string | null>(null);
 
-  // Panel de Tratamiento (Selección Individual Simple)
+  // Panel de Tratamiento (Selección Múltiple Directa)
   const [panelTratamientoAbierto, setPanelTratamientoAbierto] = useState(false);
-  const [tratamientoSeleccionadoId, setTratamientoSeleccionadoId] = useState<string | null>(() => {
-    return cita.tratamiento_id || null;
+  const [tratamientosSeleccionadosIds, setTratamientosSeleccionadosIds] = useState<string[]>(() => {
+    return cita.tratamiento_id ? [cita.tratamiento_id] : [];
   });
   const [guardandoTratamiento, setGuardandoTratamiento] = useState(false);
   const [mensajeTratamiento, setMensajeTratamiento] = useState<string | null>(null);
@@ -72,41 +72,52 @@ export const ModalDetalleCita: React.FC<Props> = ({
 
   useEffect(() => {
     if (cita) {
-      setTratamientoSeleccionadoId(cita.tratamiento_id || null);
+      setTratamientosSeleccionadosIds(cita.tratamiento_id ? [cita.tratamiento_id] : []);
       setTelefonoInput(cita.paciente.telefono || '');
       setPanelTratamientoAbierto(false);
     }
   }, [cita]);
 
-  const tratamientoSeleccionadoObj = React.useMemo(() => {
-    return catalogoTratamientos.find((t) => t.id === tratamientoSeleccionadoId) || null;
-  }, [catalogoTratamientos, tratamientoSeleccionadoId]);
+  const toggleTratamiento = (id: string) => {
+    setTratamientosSeleccionadosIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
-  const duracionTratamiento = tratamientoSeleccionadoObj?.duracion_min || 30;
+  const tratamientosSeleccionados = React.useMemo(() => {
+    return catalogoTratamientos.filter((t) => tratamientosSeleccionadosIds.includes(t.id));
+  }, [catalogoTratamientos, tratamientosSeleccionadosIds]);
+
+  const duracionTotalCalculada = React.useMemo(() => {
+    return tratamientosSeleccionados.reduce((acc, t) => acc + (t.duracion_min || 30), 0);
+  }, [tratamientosSeleccionados]);
 
   const handleGuardarTratamientos = async () => {
-    if (!tratamientoSeleccionadoObj) return;
+    if (tratamientosSeleccionados.length === 0) return;
     try {
       setGuardandoTratamiento(true);
       setErrorAccion(null);
 
+      const principal = tratamientosSeleccionados[0];
+      const nombres = tratamientosSeleccionados.map((t) => t.nombre).join(' + ');
+
       const res = await api.actualizarCita(cita.id, {
         version: cita.version,
-        tratamiento_id: tratamientoSeleccionadoObj.id,
-        motivo: tratamientoSeleccionadoObj.nombre,
-        duracion_min: duracionTratamiento,
+        tratamiento_id: principal.id,
+        motivo: nombres,
+        duracion_min: duracionTotalCalculada,
       });
 
       cita.version = res.version;
-      cita.tratamiento_id = tratamientoSeleccionadoObj.id;
+      cita.tratamiento_id = principal.id;
       cita.tratamiento = {
-        ...tratamientoSeleccionadoObj,
-        duracion_min: duracionTratamiento,
+        ...principal,
+        duracion_min: duracionTotalCalculada,
       };
-      cita.motivo = tratamientoSeleccionadoObj.nombre;
+      cita.motivo = nombres;
       cita.fin = res.fin;
 
-      setMensajeTratamiento('¡Tratamiento actualizado con éxito!');
+      setMensajeTratamiento('¡Tratamientos actualizados con éxito!');
       setTimeout(() => setMensajeTratamiento(null), 3500);
       setPanelTratamientoAbierto(false);
 
@@ -289,38 +300,52 @@ export const ModalDetalleCita: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Selector de Tratamientos (Selección Simple) */}
+            {/* Selector de Tratamientos (Selección Múltiple Directa) */}
             {panelTratamientoAbierto && (
               <div className="pt-2 border-t border-slate-200/70 space-y-2.5 animate-in fade-in duration-150">
                 <p className="text-[11px] text-slate-600 font-semibold">
-                  Selecciona el procedimiento que se va a realizar:
+                  Marca las casillas de los procedimientos a realizar:
                 </p>
 
                 {/* Pill resumen de lo que está seleccionado */}
-                <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-xl border border-blue-200/90 text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-[11px] font-semibold text-slate-500 shrink-0">Seleccionado:</span>
-                    {tratamientoSeleccionadoObj ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white border border-blue-200 text-blue-900 font-bold text-[11px] truncate">
-                        {tratamientoSeleccionadoObj.nombre}
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-blue-200/90 text-xs">
+                  <span className="text-[11px] font-semibold text-slate-500">Seleccionado:</span>
+                  {tratamientosSeleccionados.length === 0 ? (
+                    <span className="text-xs text-slate-400 italic">Ninguna casilla marcada</span>
+                  ) : (
+                    tratamientosSeleccionados.map((t) => (
+                      <span
+                        key={t.id}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-blue-200 text-blue-900 font-bold text-[11px]"
+                      >
+                        {t.nombre} <span className="text-[10px] text-blue-600 font-normal">({t.duracion_min}m)</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTratamiento(t.id);
+                          }}
+                          className="text-blue-400 hover:text-red-600 font-bold ml-0.5 cursor-pointer"
+                          title="Quitar"
+                        >
+                          ×
+                        </button>
                       </span>
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">Ningún tratamiento marcado</span>
-                    )}
-                  </div>
-                  <span className="text-[11px] font-bold text-emerald-700 ml-auto bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0">
-                    {duracionTratamiento} min
+                    ))
+                  )}
+                  <span className="text-[11px] font-bold text-emerald-700 ml-auto bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {duracionTotalCalculada} min total
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
                   {catalogoTratamientos.map((t) => {
-                    const estaSeleccionado = tratamientoSeleccionadoId === t.id;
+                    const estaSeleccionado = tratamientosSeleccionadosIds.includes(t.id);
                     return (
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => setTratamientoSeleccionadoId(t.id)}
+                        onClick={() => toggleTratamiento(t.id)}
                         className={`w-full text-left p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-2 transition-all cursor-pointer ${
                           estaSeleccionado
                             ? 'bg-blue-50/90 border-blue-500 text-blue-950 font-bold shadow-2xs ring-1 ring-blue-500'
@@ -329,13 +354,17 @@ export const ModalDetalleCita: React.FC<Props> = ({
                       >
                         <div className="flex items-center gap-2.5 truncate">
                           <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                               estaSeleccionado
-                                ? 'border-blue-600 bg-blue-600'
+                                ? 'border-blue-600 bg-blue-600 text-white'
                                 : 'border-slate-300 bg-white'
                             }`}
                           >
-                            {estaSeleccionado && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                            {estaSeleccionado && (
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
                           </div>
                           <span className="truncate">{t.nombre}</span>
                         </div>
@@ -350,16 +379,16 @@ export const ModalDetalleCita: React.FC<Props> = ({
                 {/* Resumen y Botón Guardar */}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
                   <span className="text-[11px] text-slate-500 font-medium">
-                    Duración: {duracionTratamiento} min
+                    {tratamientosSeleccionados.length} procedimiento(s) • {duracionTotalCalculada} min total
                   </span>
                   <button
                     type="button"
                     onClick={handleGuardarTratamientos}
-                    disabled={guardandoTratamiento || !tratamientoSeleccionadoObj}
+                    disabled={guardandoTratamiento || tratamientosSeleccionados.length === 0}
                     className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors active:scale-95 shadow-sm cursor-pointer disabled:opacity-50"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    {guardandoTratamiento ? 'Guardando...' : 'Aplicar Tratamiento'}
+                    {guardandoTratamiento ? 'Guardando...' : 'Aplicar Tratamientos'}
                   </button>
                 </div>
               </div>
