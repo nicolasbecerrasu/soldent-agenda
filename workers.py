@@ -356,16 +356,46 @@ def worker_sync_inverso_google(db: Session):
     except Exception as e:
         print(f"[Sync Inverso Google] Error en el ciclo de sondeo: {e}")
 
-def worker_recordatorios(db: Session):
+def worker_recordatorios(
+    db: Session,
+    forzar: bool = False,
+    filtro: Optional[str] = None
+) -> list[dict]:
+    """
+    Envía recordatorios automáticos por WhatsApp con reglas oficiales de Soldent:
+    1. BLOQUEO ESTRICTO DE MADRUGADA (22:00 a 07:29):
+       En este horario el bot NUNCA envía mensajes automáticos.
+       (Excepción: si forzar=True porque la Dra. Pamela o Nicolás lo solicitaron).
+    2. VENTANA NOCTURNA (20:30 a 22:00):
+       Citas tempranas de mañana (<= 10:30 AM) se envían con antelación tranquila
+       para evitar molestar en la madrugada.
+    3. RESCATE DE LAS 07:30 AM:
+       Citas de la mañana de hoy no enviadas anoche se envían a partir de las 07:30 AM.
+    4. VENTANA DIURNA ESTÁNDAR (07:30 a 22:00):
+       Citas de media mañana y tarde se envían exactamente con 3 horas de anticipación.
+    5. CONTROL MANUAL (forzar=True):
+       Permite a la Dra. Pamela o Nicolás enviar recordatorios a cualquier hora.
+    """
     import time as time_mod
     ahora_utc = datetime.now(timezone.utc)
     tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
     ahora_bol = datetime.now(tz_bol)
     hoy_bol = ahora_bol.date()
     manana_bol = hoy_bol + timedelta(days=1)
-    horas_anticipacion = int(getattr(settings, "RECORDATORIO_HORAS", 4))
+    horas_anticipacion = int(getattr(settings, "RECORDATORIO_HORAS", 3))
 
-    # 1. Sanar automáticamente citas futuras bloqueadas indebidamente
+    t_actual = ahora_bol.time()
+    t_0730 = time(7, 30)
+    t_1030 = time(10, 30)
+    t_2030 = time(20, 30)
+    t_2200 = time(22, 0)
+
+    # 1. BLOQUEO ESTRICTO DE MADRUGADA (22:00 a 07:29) para envíos automáticos
+    if not forzar:
+        if t_actual < t_0730 or t_actual >= t_2200:
+            return []
+
+    # Sanar citas futuras bloqueadas indebidamente
     try:
         db.execute(text("""
             UPDATE agenda.citas c
@@ -381,7 +411,7 @@ def worker_recordatorios(db: Session):
     except Exception:
         db.rollback()
 
-    # 2. Vincular automáticamente teléfonos faltantes desde fichas coincidentes
+    # Vincular automáticamente teléfonos faltantes desde fichas coincidentes
     try:
         db.execute(text("""
             UPDATE agenda.pacientes p_sin
@@ -400,39 +430,61 @@ def worker_recordatorios(db: Session):
     except Exception:
         db.rollback()
 
-    # 3. Detectar citas pendientes o confirmadas futuras sin recordatorio enviado
-    rows = db.execute(
+    # Consultar citas candidatas
+    query = (
         select(Cita, Paciente)
         .join(Paciente, Cita.paciente_id == Paciente.id)
         .where(
             Cita.estado.in_(["pendiente", "confirmada"]),
-            Cita.recordatorio_enviado == False,
-            Cita.inicio > ahora_utc
+            Cita.inicio > (ahora_utc - timedelta(hours=1))
         )
-        .order_by(Cita.inicio)
-    ).all()
+    )
+    if not forzar:
+        query = query.where(Cita.recordatorio_enviado == False, Cita.inicio > ahora_utc)
 
-    # ¿Estamos en la ventana nocturna de las 8:30 PM (20:30) en adelante?
-    es_ventana_nocturna_2030 = (ahora_bol.hour == 20 and ahora_bol.minute >= 30) or (ahora_bol.hour > 20)
+    rows = db.execute(query.order_by(Cita.inicio)).all()
+
+    es_ventana_nocturna = (t_actual >= t_2030 and t_actual < t_2200)
+    es_ventana_diurna = (t_actual >= t_0730 and t_actual < t_2200)
+
+    enviados = []
 
     for cita, paciente in rows:
         dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
         fecha_cita_bol = dt_bol.date()
         hora_cita_bol = dt_bol.time()
 
-        # REGLA A: Citas del primer turno de la mañana del día siguiente (09:00 a 12:30)
-        # Se envían la noche anterior a las 8:30 PM (20:30)
-        es_cita_manana_siguiente = (fecha_cita_bol == manana_bol and hora_cita_bol <= time(12, 30))
-        debe_enviar_nocturno = es_cita_manana_siguiente and es_ventana_nocturna_2030
+        if forzar:
+            if filtro and filtro.lower() not in ("todos", "todas", "todo"):
+                f_clean = filtro.strip().lower()
+                nom_p = (paciente.nombre or "").lower()
+                h_p = dt_bol.strftime("%H:%M")
+                if f_clean not in nom_p and f_clean not in h_p:
+                    continue
+            debe_enviar = True
+        else:
+            debe_enviar = False
+            # REGLA A: Citas de mañana del primer turno (09:00 a 10:30 AM)
+            # Se envían la noche anterior entre las 20:30 y 22:00
+            if fecha_cita_bol == manana_bol and hora_cita_bol <= t_1030:
+                if es_ventana_nocturna:
+                    debe_enviar = True
 
-        # REGLA B: Citas de hoy o ventana de anticipación estándar (4 horas antes de la cita)
-        debe_enviar_estandar = (cita.inicio <= ahora_utc + timedelta(hours=horas_anticipacion))
+            # REGLA B: Citas de hoy dentro de la ventana diurna (07:30 a 22:00)
+            elif fecha_cita_bol == hoy_bol and es_ventana_diurna:
+                # B1: Citas tempranas (<= 10:30 AM) no enviadas anoche -> enviar desde las 7:30 AM
+                if hora_cita_bol <= t_1030:
+                    debe_enviar = True
+                # B2: Citas de media mañana y tarde (10:31 en adelante) -> enviar con 3 horas de anticipación
+                elif cita.inicio <= ahora_utc + timedelta(hours=horas_anticipacion):
+                    debe_enviar = True
 
-        if not (debe_enviar_nocturno or debe_enviar_estandar):
+        if not debe_enviar:
             continue
 
+        # Intentar rescatar teléfono si está vacío
         if not paciente.telefono:
-            nom_base = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior)\b", "", paciente.nombre).strip().lower()
+            nom_base = re.sub(r"(?i)\s+(ort|ortodoncia|control|15d|profi|profilaxis|rest|restauracion|impresion|placa|inferior|superior|cirugia|cirugía)\b", "", paciente.nombre).strip().lower()
             candidato = db.execute(
                 select(Paciente).where(
                     Paciente.telefono.isnot(None),
@@ -444,13 +496,14 @@ def worker_recordatorios(db: Session):
                 db.commit()
 
         if not paciente.telefono or not es_telefono_bolivia_valido(paciente.telefono):
-            print(f"[WhatsApp] Pendiente recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido registrado ({paciente.telefono}).")
+            print(f"[WhatsApp] Pendiente recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido ({paciente.telefono}).")
             continue
 
-        if db.execute(select(NotificacionEnviada).where(NotificacionEnviada.cita_id == cita.id, NotificacionEnviada.tipo == "recordatorio", NotificacionEnviada.estado == "enviado")).scalar_one_or_none():
-            cita.recordatorio_enviado = True
-            db.commit()
-            continue
+        if not forzar:
+            if db.execute(select(NotificacionEnviada).where(NotificacionEnviada.cita_id == cita.id, NotificacionEnviada.tipo == "recordatorio", NotificacionEnviada.estado == "enviado")).scalar_one_or_none():
+                cita.recordatorio_enviado = True
+                db.commit()
+                continue
 
         token = str(uuid.uuid4())
         cita.token_recordatorio_hash = hash_token(token)
@@ -475,12 +528,10 @@ def worker_recordatorios(db: Session):
             link = f"{base_url}/r/{token}"
             estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
 
-            # Respetar Opt-out del paciente (si solicitó baja de recordatorios)
             if paciente.notas and "[OPTOUT_WHATSAPP]" in paciente.notas:
                 print(f"[WhatsApp] Saltando recordatorio cita {cita.id}: paciente '{paciente.nombre}' solicitó baja (Opt-out).")
                 continue
 
-            # Generador dinámico Spintax (variación de frases y estructuras para evitar detección de plantilla fija por Meta)
             encabezados = [
                 "🦷 *SOLDENT - Recordatorio de Cita Odontológica*",
                 "🦷 *Recordatorio de Consulta - SOLDENT*",
@@ -545,6 +596,12 @@ def worker_recordatorios(db: Session):
                     timeout=25.0
                 )
                 print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono}) para {cuando_str} a las {hora_str}")
+                enviados.append({
+                    "paciente": paciente.nombre,
+                    "telefono": paciente.telefono,
+                    "fecha": dt_bol.strftime("%d/%m/%Y"),
+                    "hora": hora_str
+                })
             except Exception as err_w:
                 print(f"[WhatsApp Error] No se pudo enviar a {paciente.telefono}: {err_w}")
 
@@ -552,10 +609,11 @@ def worker_recordatorios(db: Session):
             cita.recordatorio_enviado = True
             db.commit()
 
-            # Pausa humana aleatoria anti-ban entre envíos sucesivos (7 a 14 segundos)
-            time_mod.sleep(random.uniform(7.0, 14.0))
+            time_mod.sleep(random.uniform(5.0, 10.0))
         except IntegrityError:
             db.rollback()
+
+    return enviados
 
 def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = None) -> Optional[dict]:
     global ultimo_resumen_manana, ultimo_resumen_tarde

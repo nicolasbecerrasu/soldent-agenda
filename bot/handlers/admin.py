@@ -115,29 +115,60 @@ MÉTRICAS EN TIEMPO REAL DEL SISTEMA ({m['fecha_hoy']} a las {m['hora']} hora Sa
 - Sincronización Google Calendar: Sincronización bidireccional activa.
 
 REGLAS OFICIALES DE RECORDATORIOS AUTOMÁTICOS DE SOLDENT:
-1. CITAS DEL TURNO MAÑANA DE MAÑANA (ej. 09:00, 09:30): El recordatorio por WhatsApp está programado para enviarse hoy de forma 100% automática a las 8:30 PM (20:30) a todos los pacientes de la Dra. Pamela de ese turno (como Paul y Victoria Ugarte).
-2. CITAS DEL TURNO TARDE: Se envían durante el día de la cita con anticipación estándar de 4 horas.
-3. SI NICOLÁS PREGUNTA POR RECORDATORIOS: Explícale con total claridad y seguridad que el cron worker automático está activo y que los recordatorios para las citas del turno mañana de mañana se dispararán automáticamente a las 8:30 PM (20:30). NUNCA le digas que hay un fallo porque el contador esté en 0 antes de esa hora, ni le ofrezcas dispararlo de forma manual a menos que él explícitamente lo exija.
-4. Sé cordial, claro, técnico cuando corresponda, usando emojis apropiados y formato WhatsApp impecable.
-5. REGLA ANTI-INVENCIÓN: NO tienes acceso a los logs del servidor ni a stack traces. Si Nicolás pregunta por qué se cayó/desconectó el bot o por cualquier fallo técnico, NUNCA inventes causas (pool TCP, garbage collection, etc.). Di con honestidad que no tienes acceso a los registros del servidor y que debe revisarlos (journalctl en Oracle) o pedírselo al asistente de desarrollo. Solo puedes afirmar lo que está en las métricas de arriba.
+1. CITAS DEL TURNO MAÑANA DE MAÑANA (ej. 09:00, 09:30, 10:00): El recordatorio por WhatsApp está programado para enviarse hoy de forma 100% automática a las 8:30 PM (20:30) a todos los pacientes matutinos de la Dra. Pamela.
+2. BLOQUEO ESTRICTO DE MADRUGADA: De 22:00 a 07:29 el bot tiene PROHIBIDO enviar recordatorios automáticos para no molestar a los pacientes mientras duermen.
+3. RESCATE DE LAS 07:30 AM: A las 07:30 AM en punto, el bot revisa si alguna cita de la mañana no recibió aviso anoche y se la envía de inmediato.
+4. CITAS DE MEDIA MAÑANA Y TARDE: Se envían durante el día exactamente con 3 HORAS DE ANTICIPACIÓN (ej. cita 15:30 -> envío 12:30; cita 16:00 -> envío 13:00).
+5. CONTROL MANUAL (EXCEPCIÓN): Si Nicolás pide enviar un recordatorio ahora (ej: "manda recordatorio a Juan", "enviar recordatorios ahora", "disparar recordatorios"), confirma y añade al final de tu mensaje [ENVIAR_RECORDATORIO: Nombre o Cita o TODOS].
+6. REGLA ANTI-INVENCIÓN: NO inventes fallas ni causas técnicas. Afirma con seguridad las métricas de arriba.
 """
 
     respuesta = llamar_gemini_http(prompt_sistema, historial)
     if not respuesta:
-        detalle_citas = "\n".join(m['citas_hoy']) if m['citas_hoy'] else "• Ninguna cita programada para hoy."
-        detalle_manana = "\n".join(m['citas_manana']) if m['citas_manana'] else "• Ninguna cita programada para mañana."
-        respuesta = (
-            f"👋 ¡Hola Nicolás! 👨‍💻\n\n"
-            f"🟢 *Estado del Sistema:* Todo en orden y 100% operativo.\n"
-            f"👥 *Total de Pacientes de la Dra. Pamela:* {m['total_pacientes']} pacientes registrados.\n"
-            f"📨 *Recordatorios enviados hoy:* {m['recordatorios_hoy']} recordatorios.\n"
-            f"📅 *Citas para Hoy ({m['fecha_hoy']}):* {len(m['citas_hoy'])} citas ({m['confirmados_hoy']} confirmadas).\n"
-            f"{detalle_citas}\n\n"
-            f"🗓️ *Citas para Mañana:* {len(m['citas_manana'])} citas.\n"
-            f"{detalle_manana}\n\n"
-            f"ℹ️ *Recordatorios del Turno Mañana:* Se enviarán automáticamente hoy a las 8:30 PM (20:30) para todos los pacientes matutinos. ✨"
-        )
+        texto_lower = texto.lower()
+        if any(w in texto_lower for w in ("manda recordatorio", "mandale recordatorio", "recordatorio a", "enviar recordatorio", "disparar recordatorio")):
+            respuesta = f"Entendido Nicolás 👨‍💻, procedo a despachar el recordatorio de inmediato. [ENVIAR_RECORDATORIO: {texto}]"
+        else:
+            detalle_citas = "\n".join(m['citas_hoy']) if m['citas_hoy'] else "• Ninguna cita programada para hoy."
+            detalle_manana = "\n".join(m['citas_manana']) if m['citas_manana'] else "• Ninguna cita programada para mañana."
+            respuesta = (
+                f"👋 ¡Hola Nicolás! 👨‍💻\n\n"
+                f"🟢 *Estado del Sistema:* Todo en orden y 100% operativo.\n"
+                f"👥 *Total de Pacientes de la Dra. Pamela:* {m['total_pacientes']} pacientes registrados.\n"
+                f"📨 *Recordatorios enviados hoy:* {m['recordatorios_hoy']} recordatorios.\n"
+                f"📅 *Citas para Hoy ({m['fecha_hoy']}):* {len(m['citas_hoy'])} citas ({m['confirmados_hoy']} confirmadas).\n"
+                f"{detalle_citas}\n\n"
+                f"🗓️ *Citas para Mañana:* {len(m['citas_manana'])} citas.\n"
+                f"{detalle_manana}\n\n"
+                f"ℹ️ *Recordatorios:* Citas de la mañana se envían hoy a las 8:30 PM (20:30); citas de la tarde se envían con 3h de anticipación (cero mensajes en la madrugada). ✨"
+            )
 
-    historial.append({"role": "model", "text": respuesta})
-    return respuesta
+    # Interceptar solicitud de envío manual forzado de recordatorio
+    texto_rec_confirm = ""
+    import re
+    m_rec = re.search(r"\[ENVIAR_RECORDATORIO:\s*([^\]]+)\]", respuesta)
+    if m_rec:
+        filtro_r = m_rec.group(1).strip()
+        try:
+            from database import SessionLocal
+            from workers import worker_recordatorios
+            db_rec = SessionLocal()
+            try:
+                enviados = worker_recordatorios(db_rec, forzar=True, filtro=filtro_r)
+                if enviados:
+                    detalles = ", ".join([f"{e['paciente']} para su cita de las {e['hora']} ({e['fecha']})" for e in enviados])
+                    texto_rec_confirm = f"\n\n📲 *Recordatorio enviado:* Listo Nicolás 👨‍💻, acabo de enviar el recordatorio a {detalles}."
+                else:
+                    texto_rec_confirm = f"\n\nℹ️ *Aviso:* No se encontraron citas pendientes para '{filtro_r}' o el paciente no tiene teléfono registrado."
+            finally:
+                db_rec.close()
+        except Exception as e_rec:
+            safe_print(f"⚠️ [Error Forzar Recordatorio Admin]: {e_rec}")
+
+    respuesta_limpia = re.sub(r"\[ENVIAR_RECORDATORIO:[^\]]*\]", "", respuesta).strip()
+    if texto_rec_confirm:
+        respuesta_limpia += texto_rec_confirm
+
+    historial.append({"role": "model", "text": respuesta_limpia})
+    return respuesta_limpia
 

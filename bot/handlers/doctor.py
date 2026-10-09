@@ -160,7 +160,10 @@ TUS INSTRUCCIONES:
 4. SI LA DOCTORA PREGUNTA QUIÉNES CONFIRMARON:
    Muéstrale quiénes ya confirmaron asistencia mediante WhatsApp y quiénes siguen pendientes.
 
-5. TONO:
+5. SI LA DOCTORA TE PIDE ENVIAR O MANDAR UN RECORDATORIO (ej: "mándale recordatorio a Juan", "recuérdale a [Nombre]", "manda recordatorio al paciente de las 9", "enviar recordatorios"):
+   - Confirma amablemente y añade al final de tu mensaje [ENVIAR_RECORDATORIO: Nombre o Cita o TODOS]
+
+6. TONO:
    Extremadamente servicial, rápido, organizado y respetuoso. Formato impecable con emojis moderados.
 """
 
@@ -173,6 +176,8 @@ TUS INSTRUCCIONES:
                 f"{texto_libres[:1200]}\n\n"
                 "📋 (Puede copiar este bloque y reenviarlo directamente a su paciente)."
             )
+        elif any(w in texto_lower for w in ("manda recordatorio", "mandale recordatorio", "recordatorio a", "enviar recordatorio")):
+            respuesta = f"Con todo gusto Dra. Pamela, procedo a enviar el recordatorio solicitado. [ENVIAR_RECORDATORIO: {texto}]"
         elif any(w in texto_lower for w in ("cita", "agenda", "paciente", "quien", "programad")):
             respuesta = (
                 f"Dra. Pamela, este es el detalle de sus citas registradas:\n\n"
@@ -184,6 +189,7 @@ TUS INSTRUCCIONES:
                 "• '¿Qué citas tengo hoy (o mañana)?'\n"
                 "• 'Horarios libres de mañana para pasarle a un paciente'\n"
                 "• '¿Quiénes ya confirmaron para hoy?'\n"
+                "• 'Mándale recordatorio a [Nombre]'\n"
                 "• 'Agéndame a [Nombre] el [Día] a las [Hora]'\n"
                 "• 'Bloquea el [Día] de [Hora] a [Hora] por cirugía/personal'"
             )
@@ -201,8 +207,32 @@ TUS INSTRUCCIONES:
         f_b = m_bloq.group(2).strip()
         crear_cita(f"BLOQUEADO: {motivo_b}", settings.DOCTORA_TELEFONO, f_b)
 
+    # Si se solicitó enviar recordatorio forzado
+    texto_rec_confirm = ""
+    m_rec = re.search(r"\[ENVIAR_RECORDATORIO:\s*([^\]]+)\]", respuesta)
+    if m_rec:
+        filtro_r = m_rec.group(1).strip()
+        try:
+            from database import SessionLocal
+            from workers import worker_recordatorios
+            db_rec = SessionLocal()
+            try:
+                enviados = worker_recordatorios(db_rec, forzar=True, filtro=filtro_r)
+                if enviados:
+                    detalles = ", ".join([f"{e['paciente']} para su cita de las {e['hora']} ({e['fecha']})" for e in enviados])
+                    texto_rec_confirm = f"\n\n📲 *Recordatorio enviado:* Listo Dra. Pamela, acabo de enviar el recordatorio a {detalles}."
+                else:
+                    texto_rec_confirm = f"\n\nℹ️ *Aviso:* No se encontraron citas pendientes para '{filtro_r}' o el paciente no tiene teléfono registrado."
+            finally:
+                db_rec.close()
+        except Exception as e_rec:
+            safe_print(f"⚠️ [Error Forzar Recordatorio Doctora]: {e_rec}")
+
     respuesta_limpia = re.sub(r"\[RESERVAR:[^\]]*\]", "", respuesta)
-    respuesta_limpia = re.sub(r"\[BLOQUEAR:[^\]]*\]", "", respuesta_limpia).strip()
+    respuesta_limpia = re.sub(r"\[BLOQUEAR:[^\]]*\]", "", respuesta_limpia)
+    respuesta_limpia = re.sub(r"\[ENVIAR_RECORDATORIO:[^\]]*\]", "", respuesta_limpia).strip()
+    if texto_rec_confirm:
+        respuesta_limpia += texto_rec_confirm
 
     historial.append({"role": "model", "text": respuesta_limpia})
     return respuesta_limpia

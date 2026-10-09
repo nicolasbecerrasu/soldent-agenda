@@ -13,7 +13,7 @@ class Settings:
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     CALENDAR_ID: str = os.getenv("CALENDAR_ID", "primary")
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "https://soldent-agenda.onrender.com")
-    RECORDATORIO_HORAS: int = int(os.getenv("RECORDATORIO_HORAS", "4"))
+    RECORDATORIO_HORAS: int = int(os.getenv("RECORDATORIO_HORAS", "3"))
     RECORDATORIO_MIN: int = int(os.getenv("RECORDATORIO_MIN", "175"))
     RECORDATORIO_MAX: int = int(os.getenv("RECORDATORIO_MAX", "185"))
     DOCTORA_PIN: str = os.getenv("DOCTORA_PIN", "1104")
