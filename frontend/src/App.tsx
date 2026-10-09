@@ -202,7 +202,7 @@ export function App() {
 
             {/* Estado en vivo del Bot de WhatsApp */}
             <a
-              href="/qr?pin=1104"
+              href="/qr"
               target="_blank"
               rel="noreferrer"
               className={`inline-flex items-center gap-1.5 text-xs px-2 py-1.5 sm:px-3 rounded-xl border transition-all shadow-2xs active:scale-95 shrink-0 ${

@@ -106,7 +106,7 @@ export const DraCard: React.FC<Props> = ({
               </div>
             </div>
             <a
-              href="/qr?pin=1104"
+              href="/qr"
               target="_blank"
               rel="noreferrer"
               className={`text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0 transition-colors shadow-2xs ${

@@ -76,7 +76,7 @@ async def vigilar_conexion_whatsapp():
         enviado = _enviar_correo(
             "🚨 SOLDENT: el bot de WhatsApp está desconectado",
             f"El bot de WhatsApp lleva {int(minutos)} minutos desconectado.\n\n"
-            "Si la sesión fue revocada, escanea un nuevo QR en: http://146.181.38.79/qr?pin=1104\n"
+            "Si la sesión fue revocada, escanea un nuevo QR en: http://146.181.38.79/qr\n"
             "Mientras esté caído NO se envían recordatorios a los pacientes.",
         )
         # Si el correo no está configurado, no marcar como enviada para reintentar cuando se configure

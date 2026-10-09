@@ -133,7 +133,7 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
         <a href="/" class="btn-close" aria-label="Cerrar y volver a la agenda" onclick="if (window.opener) {{ window.close(); return false; }} else if (window.history.length > 1) {{ window.history.back(); return false; }}">✕</a>
         <h2>🔒 Soldent - Acceso Seguro</h2>
         <p>Ingresa el PIN de la Doctora para ver o administrar la vinculación de WhatsApp:</p>
-        <form method="GET" action="{accion}">
+        <form method="POST" action="{accion}">
             <input type="password" name="pin" placeholder="••••" autofocus required maxlength="10" />
             <button type="submit">Desbloquear</button>
             {err_div}
@@ -146,8 +146,20 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
 </html>"""
 
 @router.get("/whatsapp", response_class=HTMLResponse)
+@router.post("/whatsapp", response_class=HTMLResponse)
 @router.get("/qr", response_class=HTMLResponse)
-async def ver_qr_whatsapp(request: Request, pin: Optional[str] = None):
+@router.post("/qr", response_class=HTMLResponse)
+async def ver_qr_whatsapp(request: Request):
+    pin = None
+    if request.method == "POST":
+        try:
+            form = await request.form()
+            pin = form.get("pin")
+        except Exception:
+            pass
+    if not pin:
+        pin = request.query_params.get("pin")
+
     cookie_pin = request.cookies.get("soldent_admin_pin")
     es_valido = (pin and pin.strip() == settings.DOCTORA_PIN) or (cookie_pin and cookie_pin.strip() == settings.DOCTORA_PIN)
 
