@@ -475,14 +475,67 @@ def worker_recordatorios(db: Session):
             link = f"{base_url}/r/{token}"
             estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
 
-            mensaje = (
-                f"🦷 *SOLDENT - Recordatorio de Cita Odontológica*\n\n"
-                f"Estimado/a *{paciente.nombre}*, le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).\n\n"
-                f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.\n\n"
-                f"👉 Por favor confirme o gestione su asistencia en este enlace:\n"
-                f"{link}\n\n"
-                f"¡Le esperamos! ✨"
-            )
+            # Respetar Opt-out del paciente (si solicitó baja de recordatorios)
+            if paciente.notas and "[OPTOUT_WHATSAPP]" in paciente.notas:
+                print(f"[WhatsApp] Saltando recordatorio cita {cita.id}: paciente '{paciente.nombre}' solicitó baja (Opt-out).")
+                continue
+
+            # Generador dinámico Spintax (variación de frases y estructuras para evitar detección de plantilla fija por Meta)
+            encabezados = [
+                "🦷 *SOLDENT - Recordatorio de Cita Odontológica*",
+                "🦷 *Recordatorio de Consulta - SOLDENT*",
+                "🦷 *SOLDENT - Su Cita Odontológica*",
+                "🦷 *SOLDENT - Odontología Integral*",
+            ]
+            saludos = [
+                f"Estimado/a *{paciente.nombre}*",
+                f"¡Hola *{paciente.nombre}*!",
+                f"Buen día *{paciente.nombre}*",
+                f"Hola *{paciente.nombre}*, un cordial saludo",
+            ]
+            cuerpos = [
+                f"le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
+                f"le escribimos para recordarle su atención programada con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
+                f"queremos recordarle su cita odontológica con la *Dra. Pamela Pinto Suárez* este {cuando_str} a las *{hora_str}* ({hora_12}).",
+            ]
+            llamados_accion = [
+                f"👉 Por favor confirme o gestione su asistencia en este enlace:\n{link}\n_(o responda a este mensaje con un *'Confirmo'* para validar su cita)_",
+                f"👉 Puede confirmar su asistencia respondiendo *'Confirmo'* a este mensaje o gestionarla directamente en:\n{link}",
+                f"👉 Para confirmar o revisar los detalles de su atención, ingrese al enlace:\n{link}\n_(también puede responder *'Confirmo'* por aquí)_",
+            ]
+            despedidas = [
+                "¡Le esperamos en el consultorio! ✨",
+                "¡Será un gusto atenderle! ✨",
+                "¡Que tenga un excelente día! ✨",
+                "Quedamos atentos a su llegada. ✨",
+            ]
+            consejos_contacto = [
+                "💡 *Tip:* Guarde este número en sus contactos para recibir siempre sus indicaciones y recetas.",
+                "📌 Le sugerimos guardar el contacto de SOLDENT en su agenda para una mejor comunicación.",
+                "",
+            ]
+            optouts = [
+                "_(Si ya no desea recibir recordatorios automáticos por WhatsApp, responda SALIR)_",
+                "_(Para dejar de recibir estos avisos por WhatsApp, puede responder SALIR)_",
+            ]
+
+            partes_mensaje = [
+                random.choice(encabezados),
+                "",
+                f"{random.choice(saludos)}, {random.choice(cuerpos)}",
+                "",
+                f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.",
+                "",
+                random.choice(llamados_accion),
+                "",
+                random.choice(despedidas),
+            ]
+            tip = random.choice(consejos_contacto)
+            if tip:
+                partes_mensaje.extend(["", tip])
+            partes_mensaje.extend(["", random.choice(optouts)])
+
+            mensaje = "\n".join(partes_mensaje).strip()
 
             gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")).rstrip("/")
             try:
