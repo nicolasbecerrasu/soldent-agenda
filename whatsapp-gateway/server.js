@@ -428,8 +428,8 @@ async function handleSendText(req, res) {
     // Simulación avanzada de presencia humana para evitar detección de bots por Meta
     try {
       await sock.sendPresenceUpdate('composing', targetJid);
-      // Duración proporcional al tamaño del texto (mínimo 2.2s, máximo 6s) + jitter aleatorio
-      const typingDelay = Math.min(6000, Math.max(2200, Math.floor(texto.length * 25) + Math.floor(Math.random() * 1400)));
+      // Retardo aleatorio de tecleo humano: estrictamente entre 3 y 7 segundos (3000ms a 7000ms)
+      const typingDelay = Math.floor(Math.random() * 4000) + 3000;
       await new Promise((r) => setTimeout(r, typingDelay));
       await sock.sendPresenceUpdate('paused', targetJid);
     } catch (e) {
