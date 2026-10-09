@@ -35,3 +35,8 @@ whatsapp-qr.html
 .idea/
 *.swp
 ~$*
+
+# Respaldos y datos locales sensibles de pacientes
+*.xlsx
+*.csv
+backup_*.xlsx
