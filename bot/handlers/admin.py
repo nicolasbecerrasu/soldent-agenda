@@ -42,15 +42,15 @@ def obtener_metricas_administrador() -> dict:
                 confirmados_hoy += 1
             citas_hoy.append(f"• {h_ini}: {p.nombre} ({estado})")
 
-        # Citas para mañana (clasificadas por turno)
+        # Citas para mañana (clasificadas según momento de envío de recordatorio)
         citas_manana_rows = db.query(Cita, Paciente).join(Paciente, Cita.paciente_id == Paciente.id).filter(
             Cita.inicio >= inicio_manana_utc,
             Cita.inicio <= fin_manana_utc,
             Cita.estado != 'cancelada'
         ).order_by(Cita.inicio).all()
 
-        citas_manana_turno_manana = []
-        citas_manana_turno_tarde = []
+        citas_manana_tempranas = []
+        citas_manana_diurnas = []
 
         for c, p in citas_manana_rows:
             dt_ini_bol = c.inicio.astimezone(tz_bol)
@@ -58,10 +58,11 @@ def obtener_metricas_administrador() -> dict:
             estado = "✅ Confirmada" if (c.estado or "").lower() == "confirmada" else "⏳ Pendiente"
             linea_c = f"• {h_ini}: {p.nombre} ({estado})"
             citas_manana.append(linea_c)
-            if dt_ini_bol.time() <= time(12, 30):
-                citas_manana_turno_manana.append(linea_c)
+            if dt_ini_bol.time() <= time(10, 30):
+                citas_manana_tempranas.append(linea_c)
             else:
-                citas_manana_turno_tarde.append(linea_c)
+                h_envio = (dt_ini_bol - timedelta(hours=3)).strftime("%H:%M")
+                citas_manana_diurnas.append(f"• {h_ini}: {p.nombre} ({estado} - se envía mañana a las {h_envio})")
 
         # Recordatorios automáticos enviados hoy
         recordatorios_hoy = db.query(NotificacionEnviada).filter(
@@ -79,8 +80,8 @@ def obtener_metricas_administrador() -> dict:
         "total_pacientes": total_pacientes,
         "citas_hoy": citas_hoy,
         "citas_manana": citas_manana,
-        "citas_manana_turno_manana": citas_manana_turno_manana,
-        "citas_manana_turno_tarde": citas_manana_turno_tarde,
+        "citas_manana_tempranas": citas_manana_tempranas,
+        "citas_manana_diurnas": citas_manana_diurnas,
         "confirmados_hoy": confirmados_hoy,
         "recordatorios_hoy": recordatorios_hoy,
         "fecha_hoy": hoy.strftime("%d/%m/%Y"),
@@ -107,18 +108,18 @@ MÉTRICAS EN TIEMPO REAL DEL SISTEMA ({m['fecha_hoy']} a las {m['hora']} hora Sa
   Detalle citas de hoy:
 {chr(10).join(m['citas_hoy']) if m['citas_hoy'] else '  (Sin citas programadas para hoy)'}
 - Citas programadas para MAÑANA: {len(m['citas_manana'])} citas en total.
-  • Turno Mañana de Mañana (09:00 a 12:00) -> {len(m['citas_manana_turno_manana'])} citas:
-{chr(10).join(m['citas_manana_turno_manana']) if m['citas_manana_turno_manana'] else '    (Sin citas en la mañana)'}
-  • Turno Tarde de Mañana (15:30 a 19:30) -> {len(m['citas_manana_turno_tarde'])} citas:
-{chr(10).join(m['citas_manana_turno_tarde']) if m['citas_manana_turno_tarde'] else '    (Sin citas en la tarde)'}
+  • Citas tempranas (≤ 10:30 AM): {len(m['citas_manana_tempranas'])} citas (se envían hoy a las 20:30):
+{chr(10).join(m['citas_manana_tempranas']) if m['citas_manana_tempranas'] else '    (Ninguna cita temprana ≤ 10:30 AM)'}
+  • Citas diurnas (> 10:30 AM): {len(m['citas_manana_diurnas'])} citas (se envían MAÑANA con exactamente 3 horas de anticipación):
+{chr(10).join(m['citas_manana_diurnas']) if m['citas_manana_diurnas'] else '    (Sin citas diurnas)'}
 - Recordatorios automáticos de WhatsApp enviados hoy: {m['recordatorios_hoy']} mensajes enviados a pacientes.
 - Sincronización Google Calendar: Sincronización bidireccional activa.
 
 REGLAS OFICIALES DE RECORDATORIOS AUTOMÁTICOS DE SOLDENT:
-1. CITAS DEL TURNO MAÑANA DE MAÑANA (ej. 09:00, 09:30, 10:00): El recordatorio por WhatsApp está programado para enviarse hoy de forma 100% automática a las 8:30 PM (20:30) a todos los pacientes matutinos de la Dra. Pamela.
-2. BLOQUEO ESTRICTO DE MADRUGADA: De 22:00 a 07:29 el bot tiene PROHIBIDO enviar recordatorios automáticos para no molestar a los pacientes mientras duermen.
-3. RESCATE DE LAS 07:30 AM: A las 07:30 AM en punto, el bot revisa si alguna cita de la mañana no recibió aviso anoche y se la envía de inmediato.
-4. CITAS DE MEDIA MAÑANA Y TARDE: Se envían durante el día exactamente con 3 HORAS DE ANTICIPACIÓN (ej. cita 15:30 -> envío 12:30; cita 16:00 -> envío 13:00).
+1. CITAS TEMPRANAS (≤ 10:30 AM): Se envían hoy de forma automática a las 8:30 PM (20:30) porque si se enviaran con 3h de anticipación caerían en plena madrugada.
+2. CITAS DIURNAS (> 10:30 AM, ej: 11:00, 12:30, 13:00): Se envían MAÑANA en horario diurno con exactamente 3 HORAS DE ANTICIPACIÓN (ej: cita 11:00 -> envío mañana a las 08:00 AM; cita 12:30 -> envío mañana a las 09:30 AM; cita 13:00 -> envío mañana a las 10:00 AM). NUNCA digas que las citas de 11:00 o 12:30 se envían a las 20:30 de hoy.
+3. BLOQUEO ESTRICTO DE MADRUGADA: De 22:00 a 07:29 el bot tiene PROHIBIDO enviar recordatorios automáticos.
+4. RESCATE DE LAS 07:30 AM: A las 07:30 AM, el bot revisa si alguna cita matutina no recibió aviso anoche y la envía de inmediato.
 5. CONTROL MANUAL (EXCEPCIÓN): Si Nicolás pide enviar un recordatorio ahora (ej: "manda recordatorio a Juan", "enviar recordatorios ahora", "disparar recordatorios"), confirma y añade al final de tu mensaje [ENVIAR_RECORDATORIO: Nombre o Cita o TODOS].
 6. REGLA ANTI-INVENCIÓN: NO inventes fallas ni causas técnicas. Afirma con seguridad las métricas de arriba.
 """
@@ -138,9 +139,7 @@ REGLAS OFICIALES DE RECORDATORIOS AUTOMÁTICOS DE SOLDENT:
                 f"📨 *Recordatorios enviados hoy:* {m['recordatorios_hoy']} recordatorios.\n"
                 f"📅 *Citas para Hoy ({m['fecha_hoy']}):* {len(m['citas_hoy'])} citas ({m['confirmados_hoy']} confirmadas).\n"
                 f"{detalle_citas}\n\n"
-                f"🗓️ *Citas para Mañana:* {len(m['citas_manana'])} citas.\n"
-                f"{detalle_manana}\n\n"
-                f"ℹ️ *Recordatorios:* Citas de la mañana se envían hoy a las 8:30 PM (20:30); citas de la tarde se envían con 3h de anticipación (cero mensajes en la madrugada). ✨"
+                f"ℹ️ *Recordatorios:* Citas ≤ 10:30 se envían a las 20:30; citas posteriores se envían con 3h de anticipación en horario diurno (cero mensajes en la madrugada). ✨"
             )
 
     # Interceptar solicitud de envío manual forzado de recordatorio
