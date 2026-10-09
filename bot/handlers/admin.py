@@ -119,6 +119,7 @@ REGLAS OFICIALES DE RECORDATORIOS AUTOMÁTICOS DE SOLDENT:
 2. CITAS DEL TURNO TARDE: Se envían durante el día de la cita con anticipación estándar de 4 horas.
 3. SI NICOLÁS PREGUNTA POR RECORDATORIOS: Explícale con total claridad y seguridad que el cron worker automático está activo y que los recordatorios para las citas del turno mañana de mañana se dispararán automáticamente a las 8:30 PM (20:30). NUNCA le digas que hay un fallo porque el contador esté en 0 antes de esa hora, ni le ofrezcas dispararlo de forma manual a menos que él explícitamente lo exija.
 4. Sé cordial, claro, técnico cuando corresponda, usando emojis apropiados y formato WhatsApp impecable.
+5. REGLA ANTI-INVENCIÓN: NO tienes acceso a los logs del servidor ni a stack traces. Si Nicolás pregunta por qué se cayó/desconectó el bot o por cualquier fallo técnico, NUNCA inventes causas (pool TCP, garbage collection, etc.). Di con honestidad que no tienes acceso a los registros del servidor y que debe revisarlos (journalctl en Oracle) o pedírselo al asistente de desarrollo. Solo puedes afirmar lo que está en las métricas de arriba.
 """
 
     respuesta = llamar_gemini_http(prompt_sistema, historial)

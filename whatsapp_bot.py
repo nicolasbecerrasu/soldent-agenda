@@ -18,6 +18,7 @@ from workers import (
 )
 from services.gemini_ai import safe_print, llamar_gemini_http
 from services.whatsapp_gateway import enviar_mensaje_whatsapp
+from services.alertas import vigilar_conexion_whatsapp
 from services.booking_tools import consultar_disponibilidad, crear_cita
 from bot.state import historial_sesiones, mensajes_procesados_recientes
 from bot.handlers import (
@@ -89,6 +90,11 @@ async def loop_workers_automaticos():
                 if ciclo % 10 == 0:
                     worker_control_mensual_ortodoncia(db)
                 ciclo += 1
+                # 6. Vigilancia de conexión de WhatsApp (alerta por correo si se cae)
+                try:
+                    await vigilar_conexion_whatsapp()
+                except Exception as err_mon:
+                    safe_print(f"⚠️ [Alertas Error]: {err_mon}")
             finally:
                 db.close()
         except Exception as e:
