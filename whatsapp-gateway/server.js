@@ -202,7 +202,7 @@ async function borrarSesionEnDB() {
 // HTML page for easy QR scanning from browser
 function getHtmlPage() {
   if (isConnected) {
-    const isBotCorrect = userJid && userJid.includes('62422577');
+    const isBotCorrect = userJid && userJid.includes('75825272');
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -236,7 +236,7 @@ function getHtmlPage() {
     <div class="badge">${userJid || 'Dispositivo Vinculado'}</div>
 
     <div class="info-box ok">
-      <b>🤖 Número del Bot:</b> +591 62422577<br>
+      <b>🤖 Número del Bot:</b> +591 75825272<br>
       <b>👩‍⚕️ Celular de la Dra. Pamela:</b> +591 78472875 (Independiente / Libre del bot)
     </div>
 
@@ -425,10 +425,11 @@ async function handleSendText(req, res) {
       targetJid = `${clean}@s.whatsapp.net`;
     }
 
-    // Simulación de presencia humana para evitar detección de bots por Meta
+    // Simulación avanzada de presencia humana para evitar detección de bots por Meta
     try {
       await sock.sendPresenceUpdate('composing', targetJid);
-      const typingDelay = Math.floor(Math.random() * 1500) + 1800; // 1.8s a 3.3s de tecleo natural
+      // Duración proporcional al tamaño del texto (mínimo 2.2s, máximo 6s) + jitter aleatorio
+      const typingDelay = Math.min(6000, Math.max(2200, Math.floor(texto.length * 25) + Math.floor(Math.random() * 1400)));
       await new Promise((r) => setTimeout(r, typingDelay));
       await sock.sendPresenceUpdate('paused', targetJid);
     } catch (e) {
@@ -640,7 +641,7 @@ async function startBaileys() {
           }
           isConnected = false;
           userJid = null;
-          lastSecurityWarning = '⛔ ATENCIÓN: Se intentó vincular el número personal de la Dra. Pamela (+591 78472875). Por seguridad, la vinculación fue cancelada de inmediato. Por favor escanea este código QR ÚNICAMENTE con el celular del bot (+591 62422577).';
+          lastSecurityWarning = '⛔ ATENCIÓN: Se intentó vincular el número personal de la Dra. Pamela (+591 78472875). Por seguridad, la vinculación fue cancelada de inmediato. Por favor escanea este código QR ÚNICAMENTE con el celular del bot (+591 75825272).';
           setTimeout(startBaileys, 3000);
           return;
         }
@@ -681,6 +682,11 @@ async function startBaileys() {
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
 
         if (!text.trim()) continue;
+
+        // Comportamiento humano natural: marcar mensaje como leído
+        try {
+          await sock.readMessages([msg.key]);
+        } catch (e) {}
 
         // Descartar mensajes extremadamente antiguos (> 10 minutos)
         const msgTimestamp = Number(msg.messageTimestamp || 0);

@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import random
 from datetime import datetime, timedelta, timezone, time
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -488,7 +489,7 @@ def worker_recordatorios(db: Session):
                 httpx.post(
                     f"{gateway_url}/send-message",
                     json={"number": paciente.telefono, "text": mensaje, "message": mensaje},
-                    timeout=8.0
+                    timeout=25.0
                 )
                 print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono}) para {cuando_str} a las {hora_str}")
             except Exception as err_w:
@@ -498,8 +499,8 @@ def worker_recordatorios(db: Session):
             cita.recordatorio_enviado = True
             db.commit()
 
-            # Pausa de cortesía anti-spam entre mensajes
-            time_mod.sleep(2.0)
+            # Pausa humana aleatoria anti-ban entre envíos sucesivos (7 a 14 segundos)
+            time_mod.sleep(random.uniform(7.0, 14.0))
         except IntegrityError:
             db.rollback()
 

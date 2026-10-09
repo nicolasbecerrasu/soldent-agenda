@@ -20,7 +20,7 @@ class Settings:
     DOCTORA_NOMBRE: str = os.getenv("DOCTORA_NOMBRE", "Dra. Pamela Pinto Suárez")
     DOCTORA_TELEFONO: str = os.getenv("DOCTORA_TELEFONO", "+59178472875")
     ADMIN_TELEFONO: str = os.getenv("ADMIN_TELEFONO", "+59170277520")
-    BOT_PHONE_NUMBER: str = os.getenv("WHATSAPP_PHONE_NUMBER", "+59162422577")
+    BOT_PHONE_NUMBER: str = os.getenv("WHATSAPP_PHONE_NUMBER", "+59175825272")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "soldent_secret_key_pamela_2026")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     EVOLUTION_API_URL: str = os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")
