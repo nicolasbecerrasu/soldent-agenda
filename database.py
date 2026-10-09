@@ -5,7 +5,7 @@ from sqlalchemy import (
     Integer, MetaData, Numeric, String, Text, create_engine, func, event
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, relationship
 
 from config import settings
 
@@ -110,6 +110,9 @@ class Cita(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    paciente = relationship("Paciente", foreign_keys=[paciente_id])
+    tratamiento = relationship("Tratamiento", foreign_keys=[tratamiento_id])
+
 class SyncOutbox(Base):
     __tablename__ = "sync_outbox"
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -166,3 +169,6 @@ class Pago(Base):
     notas = Column(Text, nullable=True)
     fecha_pago = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    paciente = relationship("Paciente", foreign_keys=[paciente_id])
+    cita = relationship("Cita", foreign_keys=[cita_id])

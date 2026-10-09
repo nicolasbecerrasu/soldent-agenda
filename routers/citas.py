@@ -289,18 +289,23 @@ def actualizar_cita(
             db.rollback()
             raise HTTPException(404, "Cita no encontrada.")
     
+    pac = getattr(cita, "paciente", None) or db.get(Paciente, cita.paciente_id)
+    pac_nombre = f"{pac.nombre} {pac.apellidos or ''}".strip() if pac else "Paciente"
+    fin_val = row["fin"].isoformat() if hasattr(row["fin"], "isoformat") else str(row["fin"])
+    ini_val = ini_actual.isoformat() if hasattr(ini_actual, "isoformat") else str(ini_actual)
+
     encolar_outbox(
         db, cid, "update",
         {
             "estado": cambios.get("estado", cita.estado),
-            "inicio": ini_actual.isoformat(),
-            "fin": row["fin"].isoformat(),
-            "paciente_nombre": cita.paciente.nombre if cita.paciente else "Paciente"
+            "inicio": ini_val,
+            "fin": fin_val,
+            "paciente_nombre": pac_nombre
         }
     )
     registrar_auditoria(db, cid, "doctora", "actualizar", antes=antes, despues={"estado": cambios.get("estado", cita.estado), "version": row["version"], "tratamiento_id": str(trat_id)})
     db.commit()
-    return {"id": str(cid), "version": row["version"], "fin": row["fin"].isoformat()}
+    return {"id": str(cid), "version": row["version"], "fin": fin_val}
 
 @router.delete("/api/citas/{cid}")
 def eliminar_cita(
