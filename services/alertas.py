@@ -1,10 +1,10 @@
 """Monitor de conexión de WhatsApp con alertas por correo electrónico (SMTP).
 
 Variables de entorno requeridas para enviar correos (ej. Gmail con contraseña de aplicación):
-  SMTP_USER       -> cuenta emisora (ej. nicbec1985@gmail.com)
+  SMTP_USER       -> cuenta emisora (ej. nicbs1985@gmail.com)
   SMTP_PASSWORD   -> contraseña de aplicación de 16 caracteres
 Opcionales:
-  ALERT_EMAIL_TO  -> destinatario (por defecto nicbec1985@gmail.com)
+  ALERT_EMAIL_TO  -> destinatario (por defecto nicbs1985@gmail.com)
   SMTP_HOST / SMTP_PORT -> por defecto smtp.gmail.com / 465 (SSL)
   ALERTA_MINUTOS_CAIDA -> minutos desconectado antes de avisar (por defecto 5)
 """
@@ -17,7 +17,7 @@ import httpx
 
 from services.gemini_ai import safe_print
 
-ALERT_EMAIL_TO = os.getenv("ALERT_EMAIL_TO", "nicbec1985@gmail.com")
+ALERT_EMAIL_TO = os.getenv("ALERT_EMAIL_TO", "nicbs1985@gmail.com")
 MINUTOS_CAIDA = int(os.getenv("ALERTA_MINUTOS_CAIDA", "5"))
 
 _estado = {"desconectado_desde": None, "alerta_enviada": False}
