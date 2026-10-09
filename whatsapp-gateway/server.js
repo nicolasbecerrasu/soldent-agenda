@@ -516,9 +516,11 @@ app.post('/instance/updateProfilePicture/:instance', handleUpdateProfilePicture)
 app.post('/instance/updateProfilePicture', handleUpdateProfilePicture);
 
 async function startBaileys() {
-  if (process.env.DISABLE_WHATSAPP === 'true') {
-    console.log('⏸️ [WhatsApp Gateway] Desactivado por DISABLE_WHATSAPP=true (Modo Standby / Solo Web).');
-    return;
+  if (process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.DISABLE_WHATSAPP === 'true') {
+    if (process.env.ENABLE_WHATSAPP_ON_RENDER !== 'true') {
+      console.log('⏸️ [WhatsApp Gateway] Desactivado en Render para proteger la instancia principal de Oracle Cloud.');
+      return;
+    }
   }
   try {
     await restaurarSesionDesdeDB();
@@ -569,10 +571,10 @@ async function startBaileys() {
       if (connection === 'close') {
         isConnected = false;
         const statusCode = (lastDisconnect?.error)?.output?.statusCode;
-        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
         const isReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440;
 
-        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}). Reconectando...`);
+        console.log(`[WhatsApp] Conexión cerrada (código: ${statusCode || 'n/a'}).`);
 
         if (isReplaced) {
           console.warn(`[WhatsApp Standby] ⚠️ Conexión tomada por otra instancia activa (código 440). Cediendo conexión durante 5 minutos para evitar colisión continua.`);
@@ -586,9 +588,26 @@ async function startBaileys() {
           return;
         }
 
-        // NUNCA borrar la sesión de la base de datos automáticamente ante un cierre de socket.
-        // Los códigos 401/428 suelen ser rotaciones o microcortes de WhatsApp.
-        // Si borramos la base de datos, forzamos un re-escaneo innecesario.
+        if (isLoggedOut) {
+          console.warn(`[WhatsApp] 🚨 Sesión cerrada por WhatsApp (código 401 - Logged Out / Sesión revocada). Limpiando credenciales antiguas para generar nuevo código QR...`);
+          try {
+            if (sock) {
+              try { sock.end(); } catch (e) {}
+            }
+            if (fs.existsSync(authPath)) {
+              fs.rmSync(authPath, { recursive: true, force: true });
+            }
+            await borrarSesionEnDB();
+          } catch (e) {
+            console.error('[WhatsApp Logout Cleanup Error]:', e.message);
+          }
+          currentQR = null;
+          currentQRImage = null;
+          userJid = null;
+          setTimeout(startBaileys, 1500);
+          return;
+        }
+
         console.log(`[WhatsApp] Intentando reconectar automáticamente en 4s manteniendo la sesión en Supabase y disco...`);
         setTimeout(async () => {
           try {

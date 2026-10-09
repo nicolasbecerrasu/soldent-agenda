@@ -36,6 +36,15 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Verificación de entorno: Desactivar en Render para evitar colisiones con Oracle Cloud
+is_render = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_URL"))
+disable_whatsapp = os.getenv("DISABLE_WHATSAPP", "").lower() in ("true", "1", "yes")
+enable_force = os.getenv("ENABLE_WHATSAPP_ON_RENDER", "").lower() in ("true", "1", "yes")
+
+if (is_render or disable_whatsapp) and not enable_force:
+    safe_print("⏸️ [WhatsApp Bot] Desactivado automáticamente en Render/Respaldo para proteger la instancia principal en Oracle Cloud.")
+    sys.exit(0)
+
 # Re-export variables para compatibilidad retrospectiva total
 GEMINI_API_KEY = settings.GEMINI_API_KEY
 EVOLUTION_API_URL = settings.EVOLUTION_API_URL

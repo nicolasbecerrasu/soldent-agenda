@@ -62,10 +62,12 @@ done
 
 # 6. Iniciar pasarela de WhatsApp Baileys (puerto interno 8080)
 # (FastAPI ya está escuchando, por lo que restaurarSesionDesdeDB leerá Supabase al instante)
-if [ "$DISABLE_WHATSAPP" = "true" ]; then
-    echo "⏸️ Pasarela y Bot de WhatsApp desactivados en esta instancia (DISABLE_WHATSAPP=true)."
-    wait "$PID_BACKEND"
-    cleanup
+if [ -n "$RENDER" ] || [ -n "$RENDER_SERVICE_ID" ] || [ -n "$RENDER_EXTERNAL_URL" ] || [ "$DISABLE_WHATSAPP" = "true" ]; then
+    if [ "$ENABLE_WHATSAPP_ON_RENDER" != "true" ]; then
+        echo "⏸️ Entorno Render detectado: Pasarela y Bot de WhatsApp desactivados automáticamente para proteger la sesión de Oracle Cloud."
+        wait "$PID_BACKEND"
+        cleanup
+    fi
 fi
 
 echo "📱 [2/3] Iniciando pasarela de WhatsApp Baileys (puerto 8080)..."
