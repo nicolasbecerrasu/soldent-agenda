@@ -524,8 +524,6 @@ def worker_recordatorios(
             else:
                 cuando_str = f"el *{dia_str} {fecha_str}*"
 
-            base_url = getattr(settings, "PUBLIC_BASE_URL", "https://soldent-agenda.onrender.com").rstrip("/")
-            link = f"{base_url}/r/{token}"
             estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
 
             if paciente.notas and "[OPTOUT_WHATSAPP]" in paciente.notas:
@@ -550,9 +548,9 @@ def worker_recordatorios(
                 f"queremos recordarle su cita odontológica con la *Dra. Pamela Pinto Suárez* este {cuando_str} a las *{hora_str}* ({hora_12}).",
             ]
             llamados_accion = [
-                f"👉 Por favor confirme o gestione su asistencia en este enlace:\n{link}\n_(o responda a este mensaje con un *'Confirmo'* para validar su cita)_",
-                f"👉 Puede confirmar su asistencia respondiendo *'Confirmo'* a este mensaje o gestionarla directamente en:\n{link}",
-                f"👉 Para confirmar o revisar los detalles de su atención, ingrese al enlace:\n{link}\n_(también puede responder *'Confirmo'* por aquí)_",
+                "👉 *Por favor responda a este mensaje con un \"Confirmo\" para validar su asistencia (o avísenos por aquí si necesita reprogramar).*",
+                "👉 *Por favor confirme su asistencia respondiendo \"Confirmo\" a este mensaje (o indíquenos por aquí si desea reprogramar).*",
+                "👉 *Para validar su turno, por favor responda a este mensaje con \"Confirmo\" (o avísenos por aquí si no podrá asistir).*",
             ]
             despedidas = [
                 "¡Le esperamos en el consultorio! ✨",
