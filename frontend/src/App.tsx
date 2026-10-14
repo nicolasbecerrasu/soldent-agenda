@@ -182,6 +182,19 @@ export function App() {
 
           {/* Estado de sincronización y Acciones */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Botón de Actualizar / Refrescar para iPhone (bypasses PWA cache) */}
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+              }}
+              className="inline-flex items-center gap-1 text-[11px] sm:text-xs px-2 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold active:scale-95 transition-all cursor-pointer shadow-2xs"
+              title="Recargar la aplicación para obtener la última versión"
+            >
+              <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-600" />
+              <span className="hidden xs:inline">Actualizar</span>
+            </button>
+
             {/* Indicador Servidor Conectado (Visible en Celular y PC) */}
             <div
               className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 shrink-0"
