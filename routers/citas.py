@@ -21,12 +21,22 @@ from services.google_calendar import (
 
 router = APIRouter(tags=["Citas y Agenda"])
 
-def validar_horario_soldent(dt_inicio: datetime, dt_fin: datetime):
+def validar_horario_soldent(dt_inicio: datetime, dt_fin: datetime, es_horario_especial: bool = False):
     """
     Valida las restricciones oficiales de horarios de atención en Soldent:
     - Lunes a Viernes: Mañana 09:00 a 12:00 | Tarde 15:30 a 19:30
     - Sábados: Mañana 09:00 a 12:00 (Tardes y domingos cerrado)
+    - Excepción Médica / Horario Especial (es_horario_especial=True): Permite citas extraordinarias
+      autorizadas directamente por la Dra. Pamela (ej. mediodía 14:30, sobrecupos).
     """
+    if es_horario_especial:
+        if dt_inicio >= dt_fin:
+            raise HTTPException(
+                status_code=422,
+                detail="La hora de inicio debe ser anterior a la hora de finalización."
+            )
+        return
+
     tz_bol = ZoneInfo(settings.TZ_CONSULTORIO)
     dt_ini_bol = dt_inicio.astimezone(tz_bol) if dt_inicio.tzinfo else dt_inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
     dt_fin_bol = dt_fin.astimezone(tz_bol) if dt_fin.tzinfo else dt_fin.replace(tzinfo=timezone.utc).astimezone(tz_bol)
@@ -62,11 +72,11 @@ def validar_horario_soldent(dt_inicio: datetime, dt_fin: datetime):
         if t_ini >= t_1200 and t_ini < t_1530:
             raise HTTPException(
                 status_code=422,
-                detail="El horario solicitado coincide con el receso del mediodía (12:00 a 15:30). Los turnos disponibles son en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30)."
+                detail="El horario solicitado coincide con el receso del mediodía (12:00 a 15:30). Los turnos disponibles son en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30). Si es una excepción médica autorizada por la Dra. Pamela, marque la casilla de 'Horario Especial'."
             )
         raise HTTPException(
             status_code=422,
-            detail="El horario solicitado está fuera del horario de atención de Soldent. Horarios oficiales: Lunes a Viernes de 09:00 a 12:00 y de 15:30 a 19:30; Sábados de 09:00 a 12:00."
+            detail="El horario solicitado está fuera del horario de atención de Soldent. Horarios oficiales: Lunes a Viernes de 09:00 a 12:00 y de 15:30 a 19:30; Sábados de 09:00 a 12:00. Para citas extraordinarias, marque la casilla de 'Horario Especial'."
         )
 
 @router.get("/api/citas")
@@ -132,7 +142,7 @@ def crear_cita(
         raise HTTPException(404, "Tratamiento no encontrado")
     duracion = data.duracion_min if (data.duracion_min and data.duracion_min > 0) else trat.duracion_min
     fin = data.fin if data.fin else (data.inicio + timedelta(minutes=duracion))
-    validar_horario_soldent(data.inicio, fin)
+    validar_horario_soldent(data.inicio, fin, es_horario_especial=bool(data.es_horario_especial))
     paciente = db.get(Paciente, data.paciente_id)
     if not paciente:
         raise HTTPException(404, "Paciente no encontrado")
@@ -233,7 +243,7 @@ def actualizar_cita(
 
     recalcula_tiempo = bool(data.inicio or data.tratamiento_id or data.duracion_min)
     if recalcula_tiempo:
-        validar_horario_soldent(ini_actual, fin_calc)
+        validar_horario_soldent(ini_actual, fin_calc, es_horario_especial=bool(data.es_horario_especial))
 
         solapada = db.execute(
             select(Cita)

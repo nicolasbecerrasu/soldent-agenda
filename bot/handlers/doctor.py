@@ -194,18 +194,18 @@ TUS INSTRUCCIONES:
                 "• 'Bloquea el [Día] de [Hora] a [Hora] por cirugía/personal'"
             )
 
-    # Si se solicitó reserva o bloqueo
+    # Si se solicitó reserva o bloqueo (la Dra. Pamela tiene permiso de horario especial/excepción)
     m_res = re.search(r"\[RESERVAR:\s*([^\|\]]+)\|\s*([^\]]+)\]", respuesta)
     if m_res:
         nom_c = m_res.group(1).strip()
         f_c = m_res.group(2).strip()
-        crear_cita(nom_c, settings.DOCTORA_TELEFONO, f_c)
+        crear_cita(nom_c, settings.DOCTORA_TELEFONO, f_c, es_horario_especial=True)
 
     m_bloq = re.search(r"\[BLOQUEAR:\s*([^\|\]]+)\|\s*([^\]]+)\]", respuesta)
     if m_bloq:
         motivo_b = m_bloq.group(1).strip()
         f_b = m_bloq.group(2).strip()
-        crear_cita(f"BLOQUEADO: {motivo_b}", settings.DOCTORA_TELEFONO, f_b)
+        crear_cita(f"BLOQUEADO: {motivo_b}", settings.DOCTORA_TELEFONO, f_b, es_horario_especial=True)
 
     # Si se solicitó enviar recordatorio forzado
     texto_rec_confirm = ""

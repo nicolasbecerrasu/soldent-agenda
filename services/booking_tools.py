@@ -61,9 +61,9 @@ def consultar_disponibilidad(fecha: str) -> str:
         f"HORARIOS LIBRES: Disponibilidad a partir de las {siguiente_hora} o en los espacios libres oficiales."
     )
 
-def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> str:
+def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str, es_horario_especial: bool = False) -> str:
     """Registra una consulta odontológica en la base de datos de Soldent y la encola para sincronizar con Google Calendar."""
-    safe_print(f"\n[Tool crear_cita] Paciente: {nombre_paciente} | Tel: {telefono} | Inicio: {fecha_hora_inicio}")
+    safe_print(f"\n[Tool crear_cita] Paciente: {nombre_paciente} | Tel: {telefono} | Inicio: {fecha_hora_inicio} | Especial: {es_horario_especial}")
 
     tel_clean = telefono.strip()
     if not tel_clean.startswith("+"):
@@ -135,22 +135,23 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
     t_1530 = time(15, 30)
     t_1930 = time(19, 30)
 
-    if weekday == 6:
-        return "ERROR_DOMINGO_CERRADO: Los domingos la clínica Soldent permanece cerrada todo el día. Atendemos de Lunes a Viernes de 09:00 a 12:00 o 15:30 a 19:30, y Sábados de 09:00 a 12:00."
+    if not es_horario_especial:
+        if weekday == 6:
+            return "ERROR_DOMINGO_CERRADO: Los domingos la clínica Soldent permanece cerrada todo el día. Atendemos de Lunes a Viernes de 09:00 a 12:00 o 15:30 a 19:30, y Sábados de 09:00 a 12:00."
 
-    if weekday in (1, 3):
-        return f"ERROR_MARTES_JUEVES_DIRECTO_DOCTORA: Las citas de los días martes y jueves se agendan de manera exclusiva y personalizada directamente con la {settings.DOCTORA_NOMBRE} al {settings.DOCTORA_TELEFONO}."
+        if weekday in (1, 3):
+            return f"ERROR_MARTES_JUEVES_DIRECTO_DOCTORA: Las citas de los días martes y jueves se agendan de manera exclusiva y personalizada directamente con la {settings.DOCTORA_NOMBRE} al {settings.DOCTORA_TELEFONO}."
 
-    if weekday == 5:
-        if not (t_ini >= t_0900 and t_fin <= t_1200):
-            return "ERROR_SABADO_TARDE_CERRADO: Los sábados la clínica atiende únicamente en el turno de la mañana de 09:00 a 12:00 (las tardes de sábado y domingos estamos cerrados)."
-    else:
-        en_manana = (t_ini >= t_0900 and t_fin <= t_1200)
-        en_tarde = (t_ini >= t_1530 and t_fin <= t_1930)
-        if not (en_manana or en_tarde):
-            if t_ini >= t_1200 and t_ini < t_1530:
-                return "ERROR_RECESO_MEDIODIA: El horario solicitado cae en el intervalo de receso del mediodía (12:00 a 15:30). La clínica no atiende al mediodía. Ofrecemos turnos en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30)."
-            return "ERROR_HORARIO_NO_PERMITIDO: El horario solicitado está fuera de nuestro horario oficial de atención (Lunes a Viernes de 09:00 a 12:00 y 15:30 a 19:30, Sábados de 09:00 a 12:00)."
+        if weekday == 5:
+            if not (t_ini >= t_0900 and t_fin <= t_1200):
+                return "ERROR_SABADO_TARDE_CERRADO: Los sábados la clínica atiende únicamente en el turno de la mañana de 09:00 a 12:00 (las tardes de sábado y domingos estamos cerrados)."
+        else:
+            en_manana = (t_ini >= t_0900 and t_fin <= t_1200)
+            en_tarde = (t_ini >= t_1530 and t_fin <= t_1930)
+            if not (en_manana or en_tarde):
+                if t_ini >= t_1200 and t_ini < t_1530:
+                    return "ERROR_RECESO_MEDIODIA: El horario solicitado cae en el intervalo de receso del mediodía (12:00 a 15:30). La clínica no atiende al mediodía. Ofrecemos turnos en la mañana (09:00 a 12:00) o en la tarde (15:30 a 19:30)."
+                return "ERROR_HORARIO_NO_PERMITIDO: El horario solicitado está fuera de nuestro horario oficial de atención (Lunes a Viernes de 09:00 a 12:00 y 15:30 a 19:30, Sábados de 09:00 a 12:00)."
 
     # Validación anti-solapamiento y anti-duplicados previa
     try:
@@ -182,8 +183,9 @@ def crear_cita(nombre_paciente: str, telefono: str, fecha_hora_inicio: str) -> s
             "paciente_id": paciente_id,
             "tratamiento_id": tratamiento_id,
             "inicio": inicio_iso,
-            "motivo": "Agendado via WhatsApp Bot - Consulta Odontológica",
-            "notas": f"Tel: {tel_clean}"
+            "motivo": "Consulta Odontológica (Horario Especial)" if es_horario_especial else "Agendado via WhatsApp Bot - Consulta Odontológica",
+            "notas": f"Tel: {tel_clean}" + (" [Horario Especial]" if es_horario_especial else ""),
+            "es_horario_especial": es_horario_especial
         }, timeout=8.0)
 
         if r_cita.status_code == 201:

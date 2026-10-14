@@ -30,6 +30,7 @@ class CitaIn(BaseModel):
     fin: Optional[datetime] = None
     motivo: Optional[str] = None
     notas: Optional[str] = None
+    es_horario_especial: Optional[bool] = False
 
 class CitaUpdateIn(BaseModel):
     inicio: Optional[datetime] = None
@@ -38,6 +39,7 @@ class CitaUpdateIn(BaseModel):
     estado: Optional[str] = None
     motivo: Optional[str] = None
     notas: Optional[str] = None
+    es_horario_especial: Optional[bool] = False
     version: int
 
 ESTADOS_VALIDOS = {"pendiente", "confirmada", "cancelada", "atendida", "no_asistio"}

@@ -52,6 +52,7 @@ export interface CrearCitaPayload {
   duracion_min?: number;
   motivo?: string;
   notas?: string;
+  es_horario_especial?: boolean;
 }
 
 export interface CrearPacientePayload {

@@ -49,6 +49,23 @@ const OPCIONES_HORA_TARDE = [
   { valor: '19:00', label: '19:00 (07:00 PM)' },
 ];
 
+const OPCIONES_HORA_ESPECIAL = [
+  { valor: '12:00', label: '12:00 (12:00 PM)' },
+  { valor: '12:15', label: '12:15 (12:15 PM)' },
+  { valor: '12:30', label: '12:30 (12:30 PM)' },
+  { valor: '12:45', label: '12:45 (12:45 PM)' },
+  { valor: '13:00', label: '13:00 (01:00 PM)' },
+  { valor: '13:15', label: '13:15 (01:15 PM)' },
+  { valor: '13:30', label: '13:30 (01:30 PM)' },
+  { valor: '13:45', label: '13:45 (01:45 PM)' },
+  { valor: '14:00', label: '14:00 (02:00 PM)' },
+  { valor: '14:15', label: '14:15 (02:15 PM)' },
+  { valor: '14:30', label: '14:30 (02:30 PM) ⭐' },
+  { valor: '14:45', label: '14:45 (02:45 PM)' },
+  { valor: '15:00', label: '15:00 (03:00 PM)' },
+  { valor: '15:15', label: '15:15 (03:15 PM)' },
+];
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -79,9 +96,10 @@ export const ModalNuevaCita: React.FC<Props> = ({
   const [tratamientosSeleccionadosIds, setTratamientosSeleccionadosIds] = useState<string[]>([]);
   const [tipoDuracionPersonalizada, setTipoDuracionPersonalizada] = useState<'120' | '240' | 'mediodia'>('120');
 
-  // 3. Estado de Fecha, Hora y Notas
+  // 3. Estado de Fecha, Hora, Horario Especial y Notas
   const [fecha, setFecha] = useState(() => initialFecha || new Date().toISOString().split('T')[0]);
   const [hora, setHora] = useState(() => initialHora || '09:00');
+  const [esHorarioEspecial, setEsHorarioEspecial] = useState(false);
   const [notas, setNotas] = useState('');
 
   // 4. Estados de carga y feedback
@@ -94,7 +112,18 @@ export const ModalNuevaCita: React.FC<Props> = ({
   useEffect(() => {
     if (isOpen) {
       if (initialFecha) setFecha(initialFecha);
-      if (initialHora) setHora(initialHora);
+      if (initialHora) {
+        setHora(initialHora);
+        const [h, m] = initialHora.split(':').map(Number);
+        const tMin = (h || 0) * 60 + (m || 0);
+        if (tMin >= 12 * 60 && tMin < 15 * 60 + 30) {
+          setEsHorarioEspecial(true);
+        } else {
+          setEsHorarioEspecial(false);
+        }
+      } else {
+        setEsHorarioEspecial(false);
+      }
       // Iniciar sin NINGUNA casilla seleccionada (0 seleccionadas)
       setTratamientosSeleccionadosIds([]);
       setError(null);
@@ -212,39 +241,42 @@ export const ModalNuevaCita: React.FC<Props> = ({
       return;
     }
 
-    // Validar horarios oficiales de Soldent
+    // Validar horarios oficiales de Soldent (solo si NO está en modo Horario Especial)
     const [y, m, d] = fecha.split('-').map(Number);
     const dateObj = new Date(y, m - 1, d);
     const day = dateObj.getDay(); // 0 Dom, 6 Sáb
-    if (day === 0) {
-      setError('Soldent no atiende los domingos. Por favor elija un día de Lunes a Sábado.');
-      return;
-    }
 
     const [h, min] = hora.split(':').map(Number);
     const totalMin = h * 60 + min;
     const finMin = totalMin + duracionMinutos;
 
-    if (day === 6) {
-      if (totalMin < 9 * 60 || finMin > 12 * 60) {
-        setError(`Los sábados la clínica atiende únicamente de 09:00 a 12:00. Este turno finalizaría a las ${horaFinCalculada}.`);
+    if (!esHorarioEspecial) {
+      if (day === 0) {
+        setError('Soldent no atiende los domingos. Active "Horario Especial" si se trata de una excepción médica autorizada.');
         return;
       }
-    } else {
-      const enManana = totalMin >= 9 * 60 && finMin <= 12 * 60;
-      const enTarde = totalMin >= 15 * 60 + 30 && finMin <= 19 * 60 + 30;
 
-      if (!enManana && !enTarde) {
-        if (totalMin < 12 * 60 && finMin > 12 * 60) {
-          setError(`La cita sobrepasa el receso de mediodía (termina a las ${horaFinCalculada}). La atención matutina concluye a las 12:00.`);
-        } else if (totalMin >= 12 * 60 && totalMin < 15 * 60 + 30) {
-          setError('El horario solicitado coincide con el receso del mediodía (12:00 a 15:30). Elija turno de mañana o tarde.');
-        } else if (finMin > 19 * 60 + 30) {
-          setError(`La cita sobrepasa el horario de cierre (termina a las ${horaFinCalculada}). La clínica atiende hasta las 19:30.`);
-        } else {
-          setError('Horario fuera de atención. Horarios: Lun-Vie 09:00-12:00 y 15:30-19:30; Sáb 09:00-12:00.');
+      if (day === 6) {
+        if (totalMin < 9 * 60 || finMin > 12 * 60) {
+          setError(`Los sábados la clínica atiende únicamente de 09:00 a 12:00. Este turno finalizaría a las ${horaFinCalculada}. Active "Horario Especial" si es una excepción.`);
+          return;
         }
-        return;
+      } else {
+        const enManana = totalMin >= 9 * 60 && finMin <= 12 * 60;
+        const enTarde = totalMin >= 15 * 60 + 30 && finMin <= 19 * 60 + 30;
+
+        if (!enManana && !enTarde) {
+          if (totalMin < 12 * 60 && finMin > 12 * 60) {
+            setError(`La cita sobrepasa el receso de mediodía (termina a las ${horaFinCalculada}). Active "Horario Especial" si es una excepción médica autorizada.`);
+          } else if (totalMin >= 12 * 60 && totalMin < 15 * 60 + 30) {
+            setError('El horario solicitado coincide con el receso del mediodía (12:00 a 15:30). Active la casilla de "Horario Especial" para autorizar esta cita extraordinaria.');
+          } else if (finMin > 19 * 60 + 30) {
+            setError(`La cita sobrepasa el horario de cierre (termina a las ${horaFinCalculada}). Active "Horario Especial" si es una excepción.`);
+          } else {
+            setError('Horario fuera de atención oficial. Active la casilla de "Horario Especial" para autorizar esta cita extraordinaria.');
+          }
+          return;
+        }
       }
     }
 
@@ -279,7 +311,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
         fin: isoFin,
         duracion_min: duracionMinutos,
         motivo: nombresTratamientos || undefined,
-        notas: notas.trim() || undefined,
+        notas: (notas.trim() + (esHorarioEspecial ? ' [Horario Especial / Excepción]' : '')).trim() || undefined,
+        es_horario_especial: esHorarioEspecial,
       });
 
       setExito('¡Cita agendada y sincronizada correctamente!');
@@ -624,12 +657,19 @@ export const ModalNuevaCita: React.FC<Props> = ({
               <div className="relative">
                 <select
                   value={hora}
-                  onChange={(e) => setHora(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setHora(val);
+                    if (OPCIONES_HORA_ESPECIAL.some((o) => o.valor === val)) {
+                      setEsHorarioEspecial(true);
+                    }
+                  }}
                   className="w-full pl-2.5 sm:pl-3 pr-7 sm:pr-8 py-2 sm:py-2.5 rounded-xl border border-slate-200 text-slate-900 text-xs sm:text-sm font-semibold bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden appearance-none cursor-pointer"
                   required
                 >
                   {!OPCIONES_HORA_MANANA.some((o) => o.valor === hora) &&
-                    !OPCIONES_HORA_TARDE.some((o) => o.valor === hora) && (
+                    !OPCIONES_HORA_TARDE.some((o) => o.valor === hora) &&
+                    !OPCIONES_HORA_ESPECIAL.some((o) => o.valor === hora) && (
                       <option value={hora}>{hora}</option>
                     )}
                   <optgroup label="🌅 Turno Mañana (09:00 a 12:00)">
@@ -639,6 +679,15 @@ export const ModalNuevaCita: React.FC<Props> = ({
                       </option>
                     ))}
                   </optgroup>
+                  {esHorarioEspecial && (
+                    <optgroup label="⚡ Horarios Especiales / Mediodía (Excepción)">
+                      {OPCIONES_HORA_ESPECIAL.map((o) => (
+                        <option key={o.valor} value={o.valor}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                   <optgroup label="🌇 Turno Tarde (15:30 a 19:30)">
                     {OPCIONES_HORA_TARDE.map((o) => (
                       <option key={o.valor} value={o.valor}>
@@ -652,11 +701,52 @@ export const ModalNuevaCita: React.FC<Props> = ({
             </div>
           </div>
 
+          {/* Casilla de Horario Especial / Excepción Médica */}
+          <div className={`rounded-xl border p-2.5 transition-all ${
+            esHorarioEspecial 
+              ? 'border-amber-300 bg-amber-50/90 shadow-xs' 
+              : 'border-slate-200/80 bg-slate-50/60 hover:bg-slate-50'
+          }`}>
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={esHorarioEspecial}
+                onChange={(e) => {
+                  const check = e.target.checked;
+                  setEsHorarioEspecial(check);
+                  if (check && hora < '12:00') {
+                    setHora('14:30');
+                  }
+                }}
+                className="mt-0.5 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
+              />
+              <div className="flex-1">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="text-amber-500 font-extrabold">⚡</span> Horario Especial / Excepción Médica
+                </span>
+                <p className="text-[11px] text-slate-600 mt-0.5 leading-tight">
+                  Habilita citas al mediodía (ej. 14:30 / 02:30 PM), sobrecupos o turnos fuera de horario regular autorizados por la Dra. Pamela.
+                </p>
+              </div>
+            </label>
+
+            {esHorarioEspecial && (
+              <div className="mt-2 pt-1.5 border-t border-amber-200/80 flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                <span>Modo Excepción activo: Horarios de mediodía (12:00 a 15:15) y sobrecupo desbloqueados.</span>
+              </div>
+            )}
+          </div>
+
           {/* Indicador de Intervalo Calculado */}
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/90 text-xs">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-slate-600">Horario previsto:</span>
-              <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/80">
+              <span className={`font-mono font-bold px-2 py-0.5 rounded-md border ${
+                esHorarioEspecial
+                  ? 'text-amber-800 bg-amber-100/70 border-amber-300'
+                  : 'text-blue-700 bg-blue-50 border-blue-200/80'
+              }`}>
                 {duracionMinutos > 0 ? `${hora} ➔ ${horaFinCalculada}` : `${hora} (selecciona tratamiento)`}
               </span>
             </div>
@@ -665,24 +755,37 @@ export const ModalNuevaCita: React.FC<Props> = ({
             </span>
           </div>
 
-          {/* Atajos de Horarios Oficiales */}
+          {/* Atajos de Horarios Oficiales y Especiales */}
           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-medium mr-1">Atajos:</span>
-              {['09:00', '10:00', '11:00', '15:30', '16:30', '17:30', '18:30'].map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setHora(h)}
-                  className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                    hora === h
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {h}
-                </button>
-              ))}
+              {['09:00', '10:00', '11:00', '14:30', '15:30', '16:30', '17:30', '18:30'].map((h) => {
+                const esSlot1430 = h === '14:30';
+                const seleccionado = hora === h;
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      setHora(h);
+                      if (esSlot1430) {
+                        setEsHorarioEspecial(true);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                      seleccionado
+                        ? esSlot1430
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-blue-600 text-white'
+                        : esSlot1430
+                          ? 'bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 font-bold'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {esSlot1430 ? '⚡ 14:30' : h}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
