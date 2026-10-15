@@ -1,5 +1,6 @@
 import os
 import uuid
+import urllib.parse
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -120,10 +121,13 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
         .btn-close:hover {{ background: #475569; color: #f8fafc; }}
         h2 {{ color: #38bdf8; margin: 0 0 8px 0; font-size: 22px; }}
         p {{ color: #94a3b8; font-size: 14px; margin: 0 0 20px 0; line-height: 1.4; }}
-        input {{ width: 100%; box-sizing: border-box; padding: 14px; font-size: 20px; text-align: center; letter-spacing: 6px; border: 2px solid #334155; border-radius: 12px; margin-bottom: 16px; background: #0f172a; color: #f8fafc; outline: none; }}
+        .pin-wrapper {{ position: relative; margin-bottom: 16px; display: flex; align-items: center; }}
+        input {{ width: 100%; box-sizing: border-box; padding: 14px 44px 14px 14px; font-size: 20px; text-align: center; letter-spacing: 6px; border: 2px solid #334155; border-radius: 12px; background: #0f172a; color: #f8fafc; outline: none; }}
         input:focus {{ border-color: #38bdf8; }}
-        button {{ width: 100%; background: #0284c7; color: white; padding: 14px; font-size: 16px; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: background 0.2s; }}
-        button:hover {{ background: #0369a1; }}
+        .btn-eye {{ position: absolute; right: 10px; background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 6px; width: auto; height: auto; }}
+        .btn-eye:hover {{ color: #38bdf8; }}
+        button.btn-submit {{ width: 100%; background: #0284c7; color: white; padding: 14px; font-size: 16px; font-weight: 600; border: none; border-radius: 12px; cursor: pointer; transition: background 0.2s; }}
+        button.btn-submit:hover {{ background: #0369a1; }}
         .btn-back {{ display: inline-block; margin-top: 16px; color: #38bdf8; text-decoration: none; font-size: 13px; font-weight: 600; }}
         .error {{ color: #f87171; font-size: 13px; margin-top: 12px; font-weight: 500; }}
     </style>
@@ -134,14 +138,30 @@ def _generar_form_pin_html(mensaje_error: str = "", accion: str = "/qr") -> str:
         <h2>🔒 Soldent - Acceso Seguro</h2>
         <p>Ingresa el PIN de la Doctora para ver o administrar la vinculación de WhatsApp:</p>
         <form method="POST" action="{accion}">
-            <input type="password" name="pin" placeholder="••••" autofocus required maxlength="10" />
-            <button type="submit">Desbloquear</button>
+            <div class="pin-wrapper">
+                <input type="password" id="pinInput" name="pin" placeholder="••••" autofocus required maxlength="10" />
+                <button type="button" class="btn-eye" id="togglePinBtn" onclick="togglePinVisibility()" title="Mostrar u ocultar PIN">👁️</button>
+            </div>
+            <button type="submit" class="btn-submit">Desbloquear</button>
             {err_div}
         </form>
         <div>
             <a href="/" class="btn-back" onclick="if (window.opener) {{ window.close(); return false; }} else if (window.history.length > 1) {{ window.history.back(); return false; }}">← Volver a la Agenda</a>
         </div>
     </div>
+    <script>
+        function togglePinVisibility() {{
+            var inp = document.getElementById('pinInput');
+            var btn = document.getElementById('togglePinBtn');
+            if (inp.type === 'password') {{
+                inp.type = 'text';
+                btn.innerText = '🙈';
+            }} else {{
+                inp.type = 'password';
+                btn.innerText = '👁️';
+            }}
+        }}
+    </script>
 </body>
 </html>"""
 
@@ -157,11 +177,22 @@ async def ver_qr_whatsapp(request: Request):
             pin = form.get("pin")
         except Exception:
             pass
+        if not pin:
+            try:
+                body = (await request.body()).decode("utf-8", errors="ignore")
+                parsed = urllib.parse.parse_qs(body)
+                pin = parsed.get("pin", [None])[0]
+            except Exception:
+                pass
     if not pin:
         pin = request.query_params.get("pin")
 
     cookie_pin = request.cookies.get("soldent_admin_pin")
-    es_valido = (pin and pin.strip() == settings.DOCTORA_PIN) or (cookie_pin and cookie_pin.strip() == settings.DOCTORA_PIN)
+    pin_limpio = pin.strip() if pin else None
+    cookie_limpio = cookie_pin.strip() if cookie_pin else None
+
+    # Aceptar el PIN oficial de la doctora (1104)
+    es_valido = (pin_limpio == settings.DOCTORA_PIN) or (cookie_limpio == settings.DOCTORA_PIN)
 
     if not es_valido:
         err = "⚠️ PIN incorrecto. Intenta nuevamente." if pin else ""
