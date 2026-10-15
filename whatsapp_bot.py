@@ -105,9 +105,16 @@ async def loop_workers_automaticos():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(loop_workers_automaticos())
+    enable_embedded = os.getenv("ENABLE_EMBEDDED_WORKERS", "").lower() in ("true", "1", "yes")
+    task = None
+    if enable_embedded:
+        safe_print("⚡ [WhatsApp Bot] Workers embebidos activados dentro de lifespan.")
+        task = asyncio.create_task(loop_workers_automaticos())
+    else:
+        safe_print("🚀 [WhatsApp Bot] Modo desacoplado: los workers corren en su propio proceso independiente (run_workers.py).")
     yield
-    task.cancel()
+    if task:
+        task.cancel()
 
 app = FastAPI(title="Soldent WhatsApp Bot", lifespan=lifespan)
 

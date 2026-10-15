@@ -172,3 +172,10 @@ class Pago(Base):
 
     paciente = relationship("Paciente", foreign_keys=[paciente_id])
     cita = relationship("Cita", foreign_keys=[cita_id])
+
+class BotSession(Base):
+    __tablename__ = "bot_sessions"
+    telefono = Column(Text, primary_key=True)
+    historial = Column(JSON, default=list)
+    contexto = Column(JSON, default=dict)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
