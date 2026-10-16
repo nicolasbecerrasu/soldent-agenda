@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from datetime import datetime, timezone
 from config import settings
 from database import (
     AuditoriaCita,
@@ -15,6 +16,7 @@ from database import (
     SyncOutbox,
     Tratamiento,
     WhatsAppSession,
+    WorkerHeartbeat,
     engine,
     get_db
 )
@@ -67,14 +69,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint de salud del sistema
+# Endpoint de salud del sistema y monitoreo de workers
 @app.get("/api/salud")
 def salud():
+    workers_status = {}
+    try:
+        db = SessionLocal()
+        try:
+            ahora = datetime.now(timezone.utc)
+            rows = db.query(WorkerHeartbeat).all()
+            for r in rows:
+                segundos = int((ahora - r.last_heartbeat).total_seconds()) if r.last_heartbeat else None
+                # Se considera activo si reportó en los últimos 5 minutos (300s)
+                # Excepto ortodoncia que corre cada 10 ciclos (~10 min)
+                limite_tolerancia = 900 if "ortodoncia" in r.worker_name or "keepalive" in r.worker_name else 300
+                alerta = bool(r.last_error or (segundos is not None and segundos > limite_tolerancia))
+                workers_status[r.worker_name] = {
+                    "estado": "alerta" if alerta else "activo",
+                    "hace_segundos": segundos,
+                    "last_error": r.last_error,
+                    "meta": r.meta or {}
+                }
+        finally:
+            db.close()
+    except Exception as e_hb:
+        workers_status["_error"] = str(e_hb)
+
     return {
         "ok": True,
-        "version": "2.1.0",
+        "version": "2.2.0",
         "estado": "operativo",
-        "tz": settings.TZ_CONSULTORIO
+        "tz": settings.TZ_CONSULTORIO,
+        "workers": workers_status
     }
 
 # Incluir Routers Modulares

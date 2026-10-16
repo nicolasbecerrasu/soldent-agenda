@@ -179,3 +179,11 @@ class BotSession(Base):
     historial = Column(JSON, default=list)
     contexto = Column(JSON, default=dict)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+    worker_name = Column(Text, primary_key=True)
+    last_heartbeat = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_success = Column(DateTime(timezone=True))
+    last_error = Column(Text, nullable=True)
+    meta = Column(JSON, default=dict)

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta, time
 from zoneinfo import ZoneInfo
-from database import SessionLocal, Paciente, Cita, NotificacionEnviada
+from database import SessionLocal, Paciente, Cita, NotificacionEnviada, WorkerHeartbeat
 from config import settings
 from services.gemini_ai import llamar_gemini_http, safe_print
 from bot.state import historial_sesiones
@@ -71,6 +71,21 @@ def obtener_metricas_administrador() -> dict:
             NotificacionEnviada.enviado_at >= inicio_hoy_utc
         ).count()
 
+        # Monitoreo de salud de Workers en segundo plano (Heartbeats)
+        workers_info = []
+        ahora_utc = datetime.now(timezone.utc)
+        hb_rows = db.query(WorkerHeartbeat).all()
+        for hb in hb_rows:
+            seg = int((ahora_utc - hb.last_heartbeat).total_seconds()) if hb.last_heartbeat else None
+            limite = 900 if "ortodoncia" in hb.worker_name or "keepalive" in hb.worker_name else 300
+            if hb.last_error:
+                st = f"🔴 Error: {hb.last_error}"
+            elif seg is not None and seg > limite:
+                st = f"🟡 Lento (último reporte hace {seg}s)"
+            else:
+                st = f"🟢 Activo (hace {seg if seg is not None else 0}s)"
+            workers_info.append(f"  • {hb.worker_name}: {st}")
+
     except Exception as e:
         safe_print(f"[Error Metricas Admin]: {e}")
     finally:
@@ -84,6 +99,7 @@ def obtener_metricas_administrador() -> dict:
         "citas_manana_diurnas": citas_manana_diurnas,
         "confirmados_hoy": confirmados_hoy,
         "recordatorios_hoy": recordatorios_hoy,
+        "workers_info": workers_info,
         "fecha_hoy": hoy.strftime("%d/%m/%Y"),
         "hora": ahora_bol.strftime("%H:%M")
     }
@@ -103,6 +119,8 @@ NUNCA lo trates como paciente ni le hables de sacar citas médicas para él. Tr�
 
 MÉTRICAS EN TIEMPO REAL DEL SISTEMA ({m['fecha_hoy']} a las {m['hora']} hora Santa Cruz):
 - Estado del Sistema: 🟢 100% Operativo y conectado a la pasarela de WhatsApp.
+- Monitoreo de Workers Autónomos en Segundo Plano:
+{chr(10).join(m['workers_info']) if m['workers_info'] else '  • Workers iniciando ciclo...'}
 - Total de pacientes registrados en la clínica: {m['total_pacientes']} pacientes.
 - Citas programadas para HOY: {len(m['citas_hoy'])} citas ({m['confirmados_hoy']} confirmadas, {len(m['citas_hoy']) - m['confirmados_hoy']} pendientes).
   Detalle citas de hoy:
