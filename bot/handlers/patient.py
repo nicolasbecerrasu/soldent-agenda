@@ -162,7 +162,8 @@ REGLAS DE ATENCIÓN Y AGENDAMIENTO:
 
 5. SI EL PACIENTE CANCELA SU CITA O AVISA QUE NO PODRÁ IR (ej: "No podré ir", "Cancelo", "No voy a poder"):
    - Incluye al final de tu mensaje la etiqueta [CANCELAR_CITA].
-   - Responde amablemente confirmando la liberación del horario e invitándole a reprogramar cuando guste.
+   - Confirma amablemente la liberación del horario y OFRÉCELE DE INMEDIATO REAGENDAR su consulta para otro día o turno (mañana o tarde) para no interrumpir su tratamiento.
+   - Si el paciente en el mismo mensaje pide reagendar para una fecha/hora válida disponible, incluye además la etiqueta [RESERVAR: Nombre | YYYY-MM-DDTHH:MM:SS].
 
 6. TRATO Y TONO:
    - Sé cálido, educado y con trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos..."). Respuestas concisas para WhatsApp con emojis moderados.
@@ -315,9 +316,9 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
         info_c = actualizar_estado_cita_paciente(tel_paciente, "cancelada")
         nombre_p = info_c.get("paciente_nombre") or nombre
         msg_resp = (
-            f"Entendido, {nombre_p}, muchas gracias por avisarnos con anticipación. Liberamos su espacio en la agenda. 🦷\n\n"
-            f"📲 Recuerde que por este mismo chat puede escribirnos cuando guste para *reprogramar o agendar una nueva cita* en el horario que le quede más cómodo.\n\n"
-            f"¡Quedamos a su entera disposición! ✨"
+            f"Entendido, {nombre_p}, muchas gracias por avisarnos con tiempo. Su horario ha quedado liberado. 🦷✨\n\n"
+            f"🔄 *¿Desea que reprogramemos su atención para otro día?*\n"
+            f"Indíqueme por favor qué día prefiere o si le queda mejor en el turno de la mañana (09:00 a 12:00) o de la tarde (15:30 a 19:30), y con todo gusto le reservo su nuevo espacio para que continúe su tratamiento sin demoras. 🌸"
         )
         historial.append({"role": "model", "text": msg_resp})
 

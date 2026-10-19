@@ -51,10 +51,11 @@ export function App() {
   const [filtroTratamiento, setFiltroTratamiento] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   
-  // Modales
   const [modalCitaAbierto, setModalCitaAbierto] = useState(false);
   const [slotSeleccionado, setSlotSeleccionado] = useState<{ fecha: string; hora: string } | null>(null);
   const [citaSeleccionada, setCitaSeleccionada] = useState<Cita | null>(null);
+  const [pacienteParaCita, setPacienteParaCita] = useState<Paciente | null>(null);
+  const [tratamientoParaCita, setTratamientoParaCita] = useState<string | undefined>(undefined);
 
   const [backendConectado, setBackendConectado] = useState(false);
   const [whatsappConectado, setWhatsappConectado] = useState(false);
@@ -596,12 +597,16 @@ export function App() {
         onClose={() => {
           setModalCitaAbierto(false);
           setSlotSeleccionado(null);
+          setPacienteParaCita(null);
+          setTratamientoParaCita(undefined);
         }}
         onCitaCreada={cargarDatos}
         pacientes={pacientes}
         tratamientos={tratamientos}
         initialFecha={slotSeleccionado?.fecha}
         initialHora={slotSeleccionado?.hora}
+        initialPaciente={pacienteParaCita}
+        initialTratamientoId={tratamientoParaCita}
       />
 
       {/* Modal Detalle de Cita */}
@@ -615,6 +620,12 @@ export function App() {
           cargarDatos();
         }}
         onPacienteActualizado={cargarDatos}
+        onReagendar={(c) => {
+          setCitaSeleccionada(null);
+          setPacienteParaCita(c.paciente);
+          setTratamientoParaCita(c.tratamiento_id);
+          setModalCitaAbierto(true);
+        }}
       />
 
       {/* Modal Editar Paciente */}

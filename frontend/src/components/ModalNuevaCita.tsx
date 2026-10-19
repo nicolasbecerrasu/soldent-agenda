@@ -78,6 +78,8 @@ interface Props {
   tratamientos: Tratamiento[];
   initialFecha?: string;
   initialHora?: string;
+  initialPaciente?: Paciente | null;
+  initialTratamientoId?: string;
 }
 
 export const ModalNuevaCita: React.FC<Props> = ({
@@ -88,6 +90,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
   tratamientos,
   initialFecha,
   initialHora,
+  initialPaciente,
+  initialTratamientoId,
 }) => {
   // 1. Estado de Paciente con Búsqueda Sincronizada
   const [nombre, setNombre] = useState('');
@@ -98,7 +102,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
 
   // 2. Estado de Tratamiento y Duración (Selección Múltiple Directa)
   const [tratamientosSeleccionadosIds, setTratamientosSeleccionadosIds] = useState<string[]>([]);
-  const [tipoDuracionPersonalizada, setTipoDuracionPersonalizada] = useState<'120' | '240' | 'mediodia'>('120');
+  const [tipoDuracionPersonalizada, setTipoDuracionPersonalizada] = useState<'60' | '120' | '180' | '240' | 'mediodia'>('60');
 
   // 3. Estado de Fecha, Hora, Horario Especial y Notas
   const [fecha, setFecha] = useState(() => initialFecha || new Date().toISOString().split('T')[0]);
@@ -128,12 +132,25 @@ export const ModalNuevaCita: React.FC<Props> = ({
       } else {
         setEsHorarioEspecial(false);
       }
-      // Iniciar sin NINGUNA casilla seleccionada (0 seleccionadas)
-      setTratamientosSeleccionadosIds([]);
+      if (initialPaciente) {
+        setPacienteSeleccionado(initialPaciente);
+        setNombre(`${initialPaciente.nombre} ${initialPaciente.apellidos || ''}`.trim());
+        setTelefono(initialPaciente.telefono || '');
+      } else {
+        setPacienteSeleccionado(null);
+        setNombre('');
+        setTelefono('');
+      }
+      if (initialTratamientoId) {
+        setTratamientosSeleccionadosIds([initialTratamientoId]);
+      } else {
+        setTratamientosSeleccionadosIds([]);
+      }
+      setTipoDuracionPersonalizada('60');
       setError(null);
       setExito(null);
     }
-  }, [isOpen, initialFecha, initialHora]);
+  }, [isOpen, initialFecha, initialHora, initialPaciente, initialTratamientoId]);
 
   // Cerrar dropdown de nombres al hacer clic fuera
   useEffect(() => {
@@ -180,7 +197,9 @@ export const ModalNuevaCita: React.FC<Props> = ({
   const duracionMinutos = useMemo(() => {
     if (tratamientosSeleccionados.length === 0) return 0;
     if (esTratamientoPersonalizado) {
+      if (tipoDuracionPersonalizada === '60') return 60;
       if (tipoDuracionPersonalizada === '120') return 120;
+      if (tipoDuracionPersonalizada === '180') return 180;
       if (tipoDuracionPersonalizada === '240') return 240;
       return duracionMedioDia;
     }
@@ -592,44 +611,70 @@ export const ModalNuevaCita: React.FC<Props> = ({
                   <span>Seleccionar bloque de tiempo para la Doctora:</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTipoDuracionPersonalizada('60')}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${
+                      tipoDuracionPersonalizada === '60'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    1 Hora
+                    <span className="block text-[10px] font-normal opacity-90">(60m)</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setTipoDuracionPersonalizada('120')}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${
                       tipoDuracionPersonalizada === '120'
                         ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     2 Horas
-                    <span className="block text-[10px] font-normal opacity-90">(120 min)</span>
+                    <span className="block text-[10px] font-normal opacity-90">(120m)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoDuracionPersonalizada('180')}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${
+                      tipoDuracionPersonalizada === '180'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    3 Horas
+                    <span className="block text-[10px] font-normal opacity-90">(180m)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setTipoDuracionPersonalizada('240')}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${
                       tipoDuracionPersonalizada === '240'
                         ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     4 Horas
-                    <span className="block text-[10px] font-normal opacity-90">(240 min)</span>
+                    <span className="block text-[10px] font-normal opacity-90">(240m)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setTipoDuracionPersonalizada('mediodia')}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer text-center ${
                       tipoDuracionPersonalizada === 'mediodia'
                         ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     Medio Día
-                    <span className="block text-[10px] font-normal opacity-90">({duracionMedioDia} min)</span>
+                    <span className="block text-[10px] font-normal opacity-90">({duracionMedioDia}m)</span>
                   </button>
                 </div>
               </div>

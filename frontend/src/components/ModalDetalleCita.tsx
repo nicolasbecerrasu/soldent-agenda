@@ -30,6 +30,7 @@ interface Props {
   onActualizarEstado: (cita: Cita, nuevoEstado: string) => void;
   onCitaEliminada: (citaId: string) => void;
   onPacienteActualizado?: () => void;
+  onReagendar?: (cita: Cita) => void;
 }
 
 export const ModalDetalleCita: React.FC<Props> = ({
@@ -39,6 +40,7 @@ export const ModalDetalleCita: React.FC<Props> = ({
   onActualizarEstado,
   onCitaEliminada,
   onPacienteActualizado,
+  onReagendar,
 }) => {
   if (!cita) return null;
 
@@ -595,6 +597,23 @@ export const ModalDetalleCita: React.FC<Props> = ({
               </button>
             )}
           </div>
+
+          {/* BOTÓN REAGENDAR CITA */}
+          {onReagendar && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onReagendar(cita);
+                  onClose();
+                }}
+                className="w-full min-h-[44px] py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>🔄 Reagendar Cita</span>
+              </button>
+            </div>
+          )}
 
           {/* ELIMINAR CONSULTA DEFINITIVAMENTE */}
           <div className="pt-2 border-t border-slate-100">

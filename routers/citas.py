@@ -378,9 +378,20 @@ async function responder(accion){{
   try {{
     const r=await fetch('/r/{token}/'+accion,{{method:'POST'}});
     const j=await r.json();
-    msg.textContent=r.ok?j.mensaje:('Error: '+j.detail);
-    msg.style.background=r.ok?'#dcfce7':'#fee2e2';
-    msg.style.color=r.ok?'#15803d':'#b91c1c';
+    if(r.ok && accion === 'cancelar') {{
+      msg.style.background='#f8fafc';
+      msg.style.border='1px solid #e2e8f0';
+      msg.style.color='#1e293b';
+      msg.innerHTML = '<div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px;">' + (j.mensaje || 'Tu cita ha sido cancelada.') + '</div>'
+        + '<p style="color:#64748b;font-size:13px;margin:0 0 16px;">¿Deseas reagendar tu atención para otro día?</p>'
+        + '<a href="https://wa.me/59175825272?text=' + encodeURIComponent('Hola Soldent, acabo de cancelar mi cita y quisiera reagendarla para otro día por favor.') + '" '
+        + 'style="display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;background:#25D366;color:#fff;border-radius:14px;font-weight:700;text-decoration:none;font-size:14px;box-shadow:0 4px 12px rgba(37,211,102,.28);box-sizing:border-box;">'
+        + '📲 Reagendar Cita por WhatsApp</a>';
+    }} else {{
+      msg.textContent=r.ok?j.mensaje:('Error: '+j.detail);
+      msg.style.background=r.ok?'#dcfce7':'#fee2e2';
+      msg.style.color=r.ok?'#15803d':'#b91c1c';
+    }}
   }} catch(e){{
     msg.textContent='Error al conectar con la clínica.';
     msg.style.background='#fee2e2';
