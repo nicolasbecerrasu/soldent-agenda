@@ -50,6 +50,10 @@ const OPCIONES_HORA_TARDE = [
 ];
 
 const OPCIONES_HORA_ESPECIAL = [
+  { valor: '08:00', label: '08:00 (08:00 AM)' },
+  { valor: '08:15', label: '08:15 (08:15 AM)' },
+  { valor: '08:30', label: '08:30 (08:30 AM) ⭐' },
+  { valor: '08:45', label: '08:45 (08:45 AM)' },
   { valor: '12:00', label: '12:00 (12:00 PM)' },
   { valor: '12:15', label: '12:15 (12:15 PM)' },
   { valor: '12:30', label: '12:30 (12:30 PM)' },
@@ -680,7 +684,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
                     ))}
                   </optgroup>
                   {esHorarioEspecial && (
-                    <optgroup label="⚡ Horarios Especiales / Mediodía (Excepción)">
+                    <optgroup label="⚡ Horarios Especiales / Excepción (08:30 AM, Mediodía)">
                       {OPCIONES_HORA_ESPECIAL.map((o) => (
                         <option key={o.valor} value={o.valor}>
                           {o.label}
@@ -714,8 +718,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
                 onChange={(e) => {
                   const check = e.target.checked;
                   setEsHorarioEspecial(check);
-                  if (check && hora < '12:00') {
-                    setHora('14:30');
+                  if (check && !OPCIONES_HORA_ESPECIAL.some((o) => o.valor === hora)) {
+                    setHora(hora < '12:00' ? '08:30' : '14:30');
                   }
                 }}
                 className="mt-0.5 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
@@ -725,7 +729,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
                   <span className="text-amber-500 font-extrabold">⚡</span> Horario Especial / Excepción Médica
                 </span>
                 <p className="text-[11px] text-slate-600 mt-0.5 leading-tight">
-                  Habilita citas al mediodía (ej. 14:30 / 02:30 PM), sobrecupos o turnos fuera de horario regular autorizados por la Dra. Pamela.
+                  Habilita citas de mañana temprana (ej. 08:30 AM), mediodía (ej. 14:30 / 02:30 PM), sobrecupos o turnos fuera de horario regular autorizados por la Dra. Pamela.
                 </p>
               </div>
             </label>
@@ -733,7 +737,7 @@ export const ModalNuevaCita: React.FC<Props> = ({
             {esHorarioEspecial && (
               <div className="mt-2 pt-1.5 border-t border-amber-200/80 flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-                <span>Modo Excepción activo: Horarios de mediodía (12:00 a 15:15) y sobrecupo desbloqueados.</span>
+                <span>Modo Excepción activo: Horarios especiales de mañana (08:30), mediodía (12:00 a 15:15) y sobrecupo desbloqueados.</span>
               </div>
             )}
           </div>
@@ -759,8 +763,8 @@ export const ModalNuevaCita: React.FC<Props> = ({
           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-medium mr-1">Atajos:</span>
-              {['09:00', '10:00', '11:00', '14:30', '15:30', '16:30', '17:30', '18:30'].map((h) => {
-                const esSlot1430 = h === '14:30';
+              {['08:30', '09:00', '10:00', '11:00', '14:30', '15:30', '16:30', '17:30', '18:30'].map((h) => {
+                const esSlotEspecial = h === '08:30' || h === '14:30';
                 const seleccionado = hora === h;
                 return (
                   <button
@@ -768,21 +772,21 @@ export const ModalNuevaCita: React.FC<Props> = ({
                     type="button"
                     onClick={() => {
                       setHora(h);
-                      if (esSlot1430) {
+                      if (esSlotEspecial) {
                         setEsHorarioEspecial(true);
                       }
                     }}
                     className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                       seleccionado
-                        ? esSlot1430
+                        ? esSlotEspecial
                           ? 'bg-amber-600 text-white shadow-xs'
                           : 'bg-blue-600 text-white'
-                        : esSlot1430
+                        : esSlotEspecial
                           ? 'bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 font-bold'
                           : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    {esSlot1430 ? '⚡ 14:30' : h}
+                    {esSlotEspecial ? `⚡ ${h}` : h}
                   </button>
                 );
               })}

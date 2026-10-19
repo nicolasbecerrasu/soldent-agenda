@@ -923,6 +923,22 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
     if not forzar_turno and weekday == 6:
         return None
 
+    hay_cita_temprana_hoy = False
+    try:
+        inicio_temprano_utc = datetime(hoy.year, hoy.month, hoy.day, 8, 0, 0, tzinfo=tz_bol).astimezone(timezone.utc)
+        fin_temprano_utc = datetime(hoy.year, hoy.month, hoy.day, 9, 0, 0, tzinfo=tz_bol).astimezone(timezone.utc)
+        c_temp = db.execute(
+            select(Cita.id).where(
+                Cita.estado.in_(["pendiente", "confirmada"]),
+                Cita.inicio >= inicio_temprano_utc,
+                Cita.inicio < fin_temprano_utc
+            )
+        ).first()
+        if c_temp:
+            hay_cita_temprana_hoy = True
+    except Exception:
+        pass
+
     if forzar_turno:
         ft_clean = str(forzar_turno).strip().lower()
         if ft_clean not in ("manana", "mañana", "tarde"):
@@ -944,7 +960,12 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
         if tarde_ya_registrado:
             ultimo_resumen_tarde = hoy_str
 
-        es_turno_manana = (weekday <= 5) and (hora == 8 and 38 <= minuto <= 43) and not manana_ya_registrado
+        if hay_cita_temprana_hoy:
+            # Si hay cita temprana (ej. 08:30 AM), el resumen se envía a las ~08:10 AM (20 min antes)
+            es_turno_manana = (weekday <= 5) and (hora == 8 and 8 <= minuto <= 43) and not manana_ya_registrado
+        else:
+            es_turno_manana = (weekday <= 5) and (hora == 8 and 38 <= minuto <= 43) and not manana_ya_registrado
+
         es_turno_tarde = (weekday <= 4) and (hora == 15 and 8 <= minuto <= 13) and not tarde_ya_registrado
 
     if not (es_turno_manana or es_turno_tarde):
@@ -952,15 +973,16 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
 
     turno_clave = "manana" if es_turno_manana else "tarde"
     turno_nombre = "Mañana" if es_turno_manana else "Tarde"
-    horario_turno_texto = "09:00 a 12:00" if es_turno_manana else "15:30 a 19:30"
     tipo_notif = "resumen_doctora_manana" if es_turno_manana else "resumen_doctora_tarde"
 
     if es_turno_manana:
-        dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 9, 0, 0, tzinfo=tz_bol)
+        dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 8, 0, 0, tzinfo=tz_bol)
         dt_fin_turno = datetime(hoy.year, hoy.month, hoy.day, 12, 1, 0, tzinfo=tz_bol)
+        horario_turno_texto = "08:30 a 12:00 (con Horario Especial)" if hay_cita_temprana_hoy else "09:00 a 12:00"
     else:
         dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 15, 30, 0, tzinfo=tz_bol)
         dt_fin_turno = datetime(hoy.year, hoy.month, hoy.day, 19, 31, 0, tzinfo=tz_bol)
+        horario_turno_texto = "15:30 a 19:30"
 
     dt_ini_utc = dt_ini_turno.astimezone(timezone.utc)
     dt_fin_utc = dt_fin_turno.astimezone(timezone.utc)
