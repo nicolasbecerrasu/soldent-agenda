@@ -1,13 +1,22 @@
 import os
 import re
 import uuid
+import json
 import random
+import time as time_mod
 from datetime import datetime, timedelta, timezone, time
 from typing import Optional
 from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import (
+    DatabaseError,
+    DataError,
+    IntegrityError,
+    InternalError,
+    OperationalError,
+    ProgrammingError
+)
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -17,7 +26,9 @@ from database import (
     NotificacionEnviada,
     Paciente,
     SyncOutbox,
-    Tratamiento
+    Tratamiento,
+    WhatsAppSession,
+    WorkerHeartbeat
 )
 from routers.ortodoncia import _obtener_pacientes_ortodoncia_calculados
 from security import (
@@ -31,8 +42,141 @@ from services.google_calendar import (
     registrar_auditoria
 )
 
+from types import MappingProxyType
+
 ultimo_resumen_manana: Optional[str] = None
 ultimo_resumen_tarde: Optional[str] = None
+
+# Lista blanca inmutable de tipos de excepción autorizados para telemetría
+SAFE_ALLOWED_EXCEPTION_TYPES = frozenset({
+    "ConnectTimeout",
+    "ConnectError",
+    "ReadTimeout",
+    "WriteTimeout",
+    "PoolTimeout",
+    "TimeoutException",
+    "HTTPStatusError",
+    "HttpError",
+    "IntegrityError",
+    "OperationalError",
+    "DatabaseError",
+    "ProgrammingError",
+    "DataError",
+    "InternalError",
+    "RuntimeError",
+    "ValueError",
+    "TypeError",
+    "KeyError",
+    "AttributeError",
+    "NoneType",
+    "ControlledOperationalException"
+})
+
+# Catálogo inmutable de solo lectura garantizado por MappingProxyType
+SAFE_ERROR_CATALOG = MappingProxyType({
+    "TIMEOUT_EXCEEDED": "Tiempo de espera agotado en comunicacion de red",
+    "CONNECTION_TIMEOUT": "Tiempo de espera agotado al intentar conectar con el servicio",
+    "CONNECTION_ERROR": "Error de conexion o resolucion de red con el servicio externo",
+    "CONNECTION_REFUSED": "Servicio de destino no disponible o conexion rechazada activamente",
+    "HTTP_API_ERROR": "Error en respuesta de API de servicio externo",
+    "DATABASE_UNAVAILABLE": "Base de datos temporalmente no disponible por conectividad",
+    "DATABASE_OPERATIONAL_ERROR": "Fallo operativo en ejecucion de base de datos o contencion de recursos",
+    "DATABASE_GENERIC_ERROR": "Fallo reportado por el motor de base de datos",
+    "DATA_INTEGRITY_ERROR": "Violacion de restriccion de integridad de datos en almacenamiento",
+    "DATABASE_SCHEMA_OR_QUERY_ERROR": "Error en sentencia SQL o esquema de base de datos",
+    "DATA_TYPE_MISMATCH_ERROR": "Datos incompatibles con el tipo de columna en base de datos",
+    "DATABASE_INTERNAL_ERROR": "Fallo interno reportado por el motor de base de datos",
+    "PERSISTENCE_ERROR": "Error de persistencia de estado de infraestructura",
+    "GATEWAY_ERROR": "Error reportado por pasarela de mensajeria",
+    "GENERIC_ERROR": "Fallo operativo interno controlado"
+})
+
+def sanitizar_error(e) -> dict:
+    """
+    Extrae metadatos seguros de diagnóstico sin exponer URLs privadas, tokens ni datos personales.
+    Contrato garantizado: Siempre devuelve un dict con 'error_type', 'error_code' y 'message'.
+    """
+    if e is None:
+        return {
+            "error_type": "NoneType",
+            "error_code": "GENERIC_ERROR",
+            "message": f"{SAFE_ERROR_CATALOG['GENERIC_ERROR']} (NoneType)"
+        }
+    if not isinstance(e, BaseException):
+        return {
+            "error_type": "ControlledOperationalException",
+            "error_code": "GENERIC_ERROR",
+            "message": f"{SAFE_ERROR_CATALOG['GENERIC_ERROR']} (ControlledOperationalException)"
+        }
+    try:
+        raw_type = e.__class__.__name__
+        # Validación estricta contra lista blanca de tipos de excepción permitidos
+        err_type = raw_type if raw_type in SAFE_ALLOWED_EXCEPTION_TYPES else "ControlledOperationalException"
+        err_code = "GENERIC_ERROR"
+
+        # 1. Fallos de conexión previos al socket/despacho: ConnectTimeout vs ConnectError
+        if isinstance(e, httpx.ConnectTimeout) or raw_type == "ConnectTimeout":
+            err_code = "CONNECTION_TIMEOUT"
+        elif isinstance(e, httpx.ConnectError) or raw_type == "ConnectError":
+            err_code = "CONNECTION_ERROR"
+        # 2. Timeouts en tránsito o en espera de respuesta (ReadTimeout, WriteTimeout, PoolTimeout)
+        elif isinstance(e, (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout, httpx.TimeoutException)) or raw_type in ("ReadTimeout", "WriteTimeout", "PoolTimeout", "TimeoutException"):
+            err_code = "TIMEOUT_EXCEEDED"
+        # 3. Errores HTTP de respuesta de APIs externas (httpx.HTTPStatusError, googleapiclient.errors.HttpError)
+        elif isinstance(e, httpx.HTTPStatusError) or raw_type in ("HTTPStatusError", "HttpError"):
+            err_code = "HTTP_API_ERROR"
+        # 4. Violaciones de integridad de base de datos (claves únicas, foráneas, check constraints)
+        elif isinstance(e, IntegrityError) or raw_type == "IntegrityError":
+            err_code = "DATA_INTEGRITY_ERROR"
+        # 5. Errores de sintaxis SQL o discrepancias de esquema (ProgrammingError)
+        elif isinstance(e, ProgrammingError) or raw_type == "ProgrammingError":
+            err_code = "DATABASE_SCHEMA_OR_QUERY_ERROR"
+        # 6. Datos incompatibles con el tipo esperado de columna (DataError)
+        elif isinstance(e, DataError) or raw_type == "DataError":
+            err_code = "DATA_TYPE_MISMATCH_ERROR"
+        # 7. Fallo interno reportado por el motor de base de datos (InternalError)
+        elif isinstance(e, InternalError) or raw_type == "InternalError":
+            err_code = "DATABASE_INTERNAL_ERROR"
+        # 8. Fallos de OperationalError: distinguir fallo de conectividad vs contención de recursos / operativo
+        elif isinstance(e, OperationalError) or raw_type == "OperationalError":
+            e_str = str(e).lower()
+            if any(term in e_str for term in (
+                "could not connect", "connection refused", "connection closed",
+                "connection reset", "broken pipe", "server closed",
+                "timeout expired", "is not accepting connections", "network is unreachable"
+            )):
+                err_code = "DATABASE_UNAVAILABLE"
+            else:
+                err_code = "DATABASE_OPERATIONAL_ERROR"
+        # 9. Fallos genéricos de DatabaseError no clasificados en sub-clases previas
+        elif isinstance(e, DatabaseError) or raw_type == "DatabaseError":
+            err_code = "DATABASE_GENERIC_ERROR"
+
+        safe_msg = f"{SAFE_ERROR_CATALOG.get(err_code, SAFE_ERROR_CATALOG['GENERIC_ERROR'])} ({err_type})"
+        return {"error_type": err_type, "error_code": err_code, "message": safe_msg}
+    except Exception:
+        return {
+            "error_type": "ControlledOperationalException",
+            "error_code": "GENERIC_ERROR",
+            "message": f"{SAFE_ERROR_CATALOG['GENERIC_ERROR']} (ControlledOperationalException)"
+        }
+
+def enmascarar_telefono(tel: Optional[str]) -> str:
+    """Enmascara el teléfono para logs operativos, p. ej. +59178472875 -> +591***2875."""
+    if not tel:
+        return "[sin-telefono]"
+    tel_str = str(tel).strip()
+    if len(tel_str) <= 4:
+        return "***"
+    return f"{tel_str[:4]}***{tel_str[-4:]}"
+
+def enmascarar_nombre(nom: Optional[str]) -> str:
+    """Enmascara el nombre para logs operativos, p. ej. 'Juan Perez' -> 'J*** P***'."""
+    if not nom:
+        return "[anonimo]"
+    partes = str(nom).strip().split()
+    enmascaradas = [f"{p[0]}***" if len(p) > 1 else p for p in partes]
+    return " ".join(enmascaradas)
 
 def worker_control_mensual_ortodoncia(db: Session):
     tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
@@ -44,7 +188,8 @@ def worker_control_mensual_ortodoncia(db: Session):
             if vencidos:
                 print(f"🦷 [Worker Ortodoncia] Detectados {len(vencidos)} pacientes con control mensual vencido.")
         except Exception as err:
-            print(f"⚠️ [Worker Ortodoncia Error]: {err}")
+            safe_err = sanitizar_error(err)["message"]
+            print(f"⚠️ [Worker Ortodoncia Error]: {safe_err}")
 
 def worker_sync_outbox(db: Session):
     ahora = datetime.now(timezone.utc)
@@ -120,7 +265,8 @@ def worker_sync_inverso_google(db: Session):
     try:
         service = get_calendar_service()
     except Exception as e:
-        print(f"[Sync Inverso Google] Error al obtener credenciales de Google Calendar: {e}")
+        safe_err = sanitizar_error(e)["message"]
+        print(f"[Sync Inverso Google] Error al obtener credenciales de Google Calendar: {safe_err}")
         return
 
     ahora_utc = datetime.now(timezone.utc)
@@ -230,7 +376,7 @@ def worker_sync_inverso_google(db: Session):
                 ).scalars().first()
 
             if ya_eliminado:
-                print(f"🛑 [Sync Inverso Google] Evento {gid} ({summary}) fue eliminado voluntariamente de la agenda. Ignorando re-importación.")
+                print(f"🛑 [Sync Inverso Google] Evento {gid} fue eliminado voluntariamente de la agenda. Ignorando re-importación.")
                 if status != "cancelled":
                     try:
                         service.events().delete(calendarId=settings.CALENDAR_ID, eventId=gid).execute()
@@ -292,7 +438,7 @@ def worker_sync_inverso_google(db: Session):
                 ).scalars().first()
                 if candidato and candidato.telefono:
                     paciente.telefono = candidato.telefono
-                    print(f"📞 [Sync Inverso Google] Teléfono {candidato.telefono} vinculado a paciente '{paciente.nombre}'")
+                    print(f"📞 [Sync Inverso Google] Teléfono {enmascarar_telefono(candidato.telefono)} vinculado a paciente '{enmascarar_nombre(paciente.nombre)}'")
                     db.flush()
 
             texto_eval = f"{summary} {descripcion}".lower()
@@ -345,21 +491,23 @@ def worker_sync_inverso_google(db: Session):
                 db.flush()
                 registrar_auditoria(db, nueva_cita.id, "doctora_iphone", "crear_desde_google", despues={"inicio": str(dt_inicio), "estado": "confirmada"})
                 db.commit()
-                print(f"✅ [Sync Inverso Google] Cita de iPhone importada con éxito: '{nombre_paciente}' ({dt_inicio.strftime('%d/%m/%Y %H:%M')})")
+                print(f"✅ [Sync Inverso Google] Cita de iPhone importada con éxito: '{enmascarar_nombre(nombre_paciente)}' ({dt_inicio.strftime('%d/%m/%Y %H:%M')})")
             except IntegrityError as err_int:
                 db.rollback()
-                print(f"⚠️ [Sync Inverso Google] Aviso de colisión al importar cita de iPhone '{summary}': {err_int}")
+                print(f"⚠️ [Sync Inverso Google] Aviso de colisión al importar cita de iPhone: {err_int.__class__.__name__}")
             except Exception as err_ins:
                 db.rollback()
-                print(f"⚠️ [Sync Inverso Google] Error al guardar cita de iPhone: {err_ins}")
+                print(f"⚠️ [Sync Inverso Google] Error al guardar cita de iPhone: {err_ins.__class__.__name__}")
 
     except Exception as e:
-        print(f"[Sync Inverso Google] Error en el ciclo de sondeo: {e}")
+        safe_err = sanitizar_error(e)["message"]
+        print(f"[Sync Inverso Google] Error en el ciclo de sondeo: {safe_err}")
 
 def worker_recordatorios(
     db: Session,
     forzar: bool = False,
-    filtro: Optional[str] = None
+    filtro: Optional[str] = None,
+    cita_id_especifica: Optional[uuid.UUID] = None
 ) -> list[dict]:
     """
     Envía recordatorios automáticos por WhatsApp con reglas oficiales de Soldent:
@@ -376,6 +524,12 @@ def worker_recordatorios(
     5. CONTROL MANUAL (forzar=True):
        Permite a la Dra. Pamela o Nicolás enviar recordatorios a cualquier hora.
     """
+    # 0. RESTRICCIÓN DE SEGURIDAD ESTRICTA PARA FORZAR ENVÍO:
+    # Se prohíbe terminantemente forzar=True sin especificar una cita_id_especifica puntual.
+    # Esta verificación se ejecuta en la primera instrucción, antes de cualquier cálculo, consulta o efecto secundario.
+    if forzar and not cita_id_especifica:
+        raise ValueError("forzar=True requiere cita_id_especifica obligatoria para evitar reenvios masivos")
+
     import time as time_mod
     ahora_utc = datetime.now(timezone.utc)
     tz_bol = ZoneInfo(getattr(settings, "TZ_CONSULTORIO", "America/La_Paz"))
@@ -439,7 +593,9 @@ def worker_recordatorios(
             Cita.inicio > (ahora_utc - timedelta(hours=1))
         )
     )
-    if not forzar:
+    if cita_id_especifica:
+        query = query.where(Cita.id == cita_id_especifica)
+    elif not forzar:
         query = query.where(Cita.recordatorio_enviado == False, Cita.inicio > ahora_utc)
 
     rows = db.execute(query.order_by(Cita.inicio)).all()
@@ -450,9 +606,17 @@ def worker_recordatorios(
     enviados = []
 
     for cita, paciente in rows:
-        dt_bol = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=timezone.utc).astimezone(tz_bol)
+        dt_inicio_utc = cita.inicio if (cita.inicio and cita.inicio.tzinfo) else cita.inicio.replace(tzinfo=timezone.utc)
+        dt_bol = dt_inicio_utc.astimezone(tz_bol)
         fecha_cita_bol = dt_bol.date()
         hora_cita_bol = dt_bol.time()
+
+        # 1. COMPROBACIÓN PRIORITARIA DE OPT-OUT:
+        # Si el paciente solicitó la baja ([OPTOUT_WHATSAPP]), se descarta de inmediato
+        # ANTES de consultar, crear o modificar NotificacionEnviada y ANTES de cualquier db.flush()
+        if paciente.notas and "[OPTOUT_WHATSAPP]" in paciente.notas:
+            print(f"[WhatsApp Opt-out] Omitiendo recordatorio cita {cita.id}: paciente '{enmascarar_nombre(paciente.nombre)}' solicitó baja.")
+            continue
 
         if forzar:
             if filtro and filtro.lower() not in ("todos", "todas", "todo"):
@@ -476,7 +640,7 @@ def worker_recordatorios(
                 if hora_cita_bol <= t_1030:
                     debe_enviar = True
                 # B2: Citas de media mañana y tarde (10:31 en adelante) -> enviar con 3 horas de anticipación
-                elif cita.inicio <= ahora_utc + timedelta(hours=horas_anticipacion):
+                elif dt_inicio_utc <= ahora_utc + timedelta(hours=horas_anticipacion):
                     debe_enviar = True
 
         if not debe_enviar:
@@ -496,21 +660,55 @@ def worker_recordatorios(
                 db.commit()
 
         if not paciente.telefono or not es_telefono_bolivia_valido(paciente.telefono):
-            print(f"[WhatsApp] Pendiente recordatorio cita {cita.id}: paciente '{paciente.nombre}' sin teléfono boliviano válido ({paciente.telefono}).")
+            print(f"[WhatsApp] Pendiente recordatorio cita {cita.id}: paciente '{enmascarar_nombre(paciente.nombre)}' sin teléfono boliviano válido ({enmascarar_telefono(paciente.telefono)}).")
             continue
 
-        if not forzar:
-            if db.execute(select(NotificacionEnviada).where(NotificacionEnviada.cita_id == cita.id, NotificacionEnviada.tipo == "recordatorio", NotificacionEnviada.estado == "enviado")).scalar_one_or_none():
+        ya = db.execute(
+            select(NotificacionEnviada).where(
+                NotificacionEnviada.cita_id == cita.id,
+                NotificacionEnviada.tipo == "recordatorio"
+            )
+        ).scalar_one_or_none()
+
+        if ya:
+            if not forzar and ya.estado == "enviado":
                 cita.recordatorio_enviado = True
                 db.commit()
                 continue
+            elif not forzar and ya.estado == "incierto":
+                # Timeout previo: protección estricta contra duplicados.
+                # Para evitar duplicados en el paciente ante incertidumbre de entrega de la red,
+                # NO se reintenta automáticamente. Requiere intervención manual (forzar=True) o reconciliación.
+                print(f"[WhatsApp] Saltando recordatorio cita {cita.id}: estado incierto previo ({enmascarar_telefono(paciente.telefono)}). Protección contra duplicados activa.")
+                continue
+            elif not forzar and ya.estado == "error":
+                # Fallo previo confirmado: reintento controlado (máx 3 intentos con 10 min de separación desde el último intento)
+                if (ya.intentos or 0) >= 3:
+                    print(f"[WhatsApp] Saltando recordatorio cita {cita.id}: superó límite de reintentos (3).")
+                    continue
+                ultimo_intento = ya.enviado_at or ya.created_at or ahora_utc
+                tiempo_seg = (ahora_utc - ultimo_intento).total_seconds()
+                if tiempo_seg < 600:
+                    continue
 
-        token = str(uuid.uuid4())
-        cita.token_recordatorio_hash = hash_token(token)
-        ya = NotificacionEnviada(cita_id=cita.id, tipo="recordatorio", destino=paciente.telefono)
-        db.add(ya)
+        # Preservar el hash si ya existe; solo generar si es nulo.
+        # Jamás altera cita.token_respuesta_hash (enlace de confirmación original).
+        if not cita.token_recordatorio_hash:
+            token = str(uuid.uuid4())
+            cita.token_recordatorio_hash = hash_token(token)
+
+        if not ya:
+            ya = NotificacionEnviada(
+                cita_id=cita.id,
+                tipo="recordatorio",
+                destino=paciente.telefono,
+                estado="pendiente",
+                intentos=0
+            )
+            db.add(ya)
+        db.flush()
+
         try:
-            db.flush()
             hora_str = dt_bol.strftime("%H:%M")
             hora_12 = dt_bol.strftime("%I:%M %p").lstrip("0")
             dias_esp = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
@@ -525,10 +723,6 @@ def worker_recordatorios(
                 cuando_str = f"el *{dia_str} {fecha_str}*"
 
             estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
-
-            if paciente.notas and "[OPTOUT_WHATSAPP]" in paciente.notas:
-                print(f"[WhatsApp] Saltando recordatorio cita {cita.id}: paciente '{paciente.nombre}' solicitó baja (Opt-out).")
-                continue
 
             encabezados = [
                 "🦷 *SOLDENT - Recordatorio de Cita Odontológica*",
@@ -587,31 +781,134 @@ def worker_recordatorios(
             mensaje = "\n".join(partes_mensaje).strip()
 
             gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")).rstrip("/")
+            timeout_wa = httpx.Timeout(connect=3.0, read=15.0, write=5.0, pool=3.0)
+            ya.intentos = (ya.intentos or 0) + 1
             try:
-                httpx.post(
+                resp = httpx.post(
                     f"{gateway_url}/send-message",
                     json={"number": paciente.telefono, "text": mensaje, "message": mensaje},
-                    timeout=25.0
+                    timeout=timeout_wa
                 )
-                print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{paciente.nombre}' ({paciente.telefono}) para {cuando_str} a las {hora_str}")
-                enviados.append({
-                    "paciente": paciente.nombre,
-                    "telefono": paciente.telefono,
-                    "fecha": dt_bol.strftime("%d/%m/%Y"),
-                    "hora": hora_str
-                })
+                if resp.status_code in (200, 201):
+                    ya.estado = "enviado"
+                    ya.enviado_at = ahora_utc
+                    ya.error = None
+                    cita.recordatorio_enviado = True
+                    db.commit()
+                    print(f"[WhatsApp] Recordatorio enviado con éxito a paciente activo '{enmascarar_nombre(paciente.nombre)}' ({enmascarar_telefono(paciente.telefono)}) para {cuando_str} a las {hora_str}")
+                    enviados.append({
+                        "paciente": paciente.nombre,
+                        "telefono": paciente.telefono,
+                        "fecha": dt_bol.strftime("%d/%m/%Y"),
+                        "hora": hora_str
+                    })
+                elif resp.status_code in (400, 422):
+                    # Fallos confirmados previos al despacho por validación de parámetros
+                    ya.estado = "error"
+                    ya.enviado_at = ahora_utc
+                    ya.error = f"Gateway HTTP {resp.status_code} (Rechazo de parametros)"
+                    db.commit()
+                    print(f"[WhatsApp Error] Gateway rechazó mensaje ({resp.status_code}) para {enmascarar_telefono(paciente.telefono)}")
+                else:
+                    # HTTP 500, 502, 503, 504 u otros: Resultado incierto.
+                    # Un 503 puede originarse en proxies intermedios o durante la desconexión del socket
+                    # en pleno envío. Para evitar duplicados, se clasifica como 'incierto'.
+                    ya.estado = "incierto"
+                    ya.enviado_at = ahora_utc
+                    ya.error = f"Gateway HTTP {resp.status_code} (Incierto)"
+                    db.commit()
+                    print(f"[WhatsApp Incierto] Gateway respondió {resp.status_code} para {enmascarar_telefono(paciente.telefono)}. Marcado 'incierto' para evitar duplicación.")
+            except (httpx.ReadTimeout, httpx.WriteTimeout):
+                ya.estado = "incierto"
+                ya.enviado_at = ahora_utc
+                ya.error = "Timeout en espera de respuesta (posible envío en tránsito)"
+                db.commit()
+                print(f"[WhatsApp Incierto] Timeout al enviar a {enmascarar_telefono(paciente.telefono)}. Marcado 'incierto' para evitar duplicación.")
+            except (httpx.ConnectError, httpx.ConnectTimeout) as err_conn:
+                safe_conn = sanitizar_error(err_conn)["message"]
+                ya.estado = "error"
+                ya.enviado_at = ahora_utc
+                ya.error = safe_conn
+                db.commit()
+                print(f"[WhatsApp Error] Gateway inaccesible para {enmascarar_telefono(paciente.telefono)}: {safe_conn}")
             except Exception as err_w:
-                print(f"[WhatsApp Error] No se pudo enviar a {paciente.telefono}: {err_w}")
-
-            ya.estado, ya.enviado_at = "enviado", ahora_utc
-            cita.recordatorio_enviado = True
-            db.commit()
+                safe_w = sanitizar_error(err_w)["message"]
+                ya.estado = "incierto"
+                ya.enviado_at = ahora_utc
+                ya.error = safe_w
+                db.commit()
+                print(f"[WhatsApp Incierto] Error inesperado para {enmascarar_telefono(paciente.telefono)}: {safe_w}")
 
             time_mod.sleep(random.uniform(5.0, 10.0))
         except IntegrityError:
             db.rollback()
 
     return enviados
+
+def _resumen_registrado_hoy(db: Session, turno: str, hoy_str: str) -> Optional[str]:
+    """
+    Comprueba en WhatsAppSession o en WorkerHeartbeat.meta el estado del resumen del turno hoy.
+    Retorna:
+      - 'despachado': enviado exitosamente hoy.
+      - 'incierto': falló con timeout o error 5xx/desconocido; protegido contra duplicados.
+      - None: pendiente (no procesado hoy).
+    Si la base de datos no responde, propaga la excepción para que el worker aborte el ciclo sin riesgo de duplicar.
+    """
+    sess = db.get(WhatsAppSession, f"resumen_doctora_{turno}")
+    if sess and sess.value:
+        try:
+            val_data = json.loads(sess.value)
+            if isinstance(val_data, dict) and val_data.get("fecha") == hoy_str:
+                return val_data.get("estado", "despachado")
+        except Exception:
+            if sess.value == hoy_str:
+                return "despachado"
+
+    hb = db.get(WorkerHeartbeat, "worker_resumen_turnos_doctora")
+    if hb and hb.meta and isinstance(hb.meta, dict):
+        reg = hb.meta.get(f"resumen_{turno}")
+        if isinstance(reg, dict) and reg.get("fecha") == hoy_str:
+            return reg.get("estado", "despachado")
+        elif hb.meta.get(f"ultimo_resumen_{turno}") == hoy_str:
+            return "despachado"
+
+    return None
+
+def _guardar_resumen_registrado(db: Session, turno: str, hoy_str: str, estado: str = "despachado") -> bool:
+    """
+    Persiste en WhatsAppSession y WorkerHeartbeat.meta el estado explícito del resumen del turno ('despachado' o 'incierto') para hoy.
+    Si ocurre un error de base de datos, ejecuta rollback y propaga la excepción.
+    """
+    try:
+        payload = json.dumps({
+            "fecha": hoy_str,
+            "estado": estado,
+            "actualizado_at": datetime.now(timezone.utc).isoformat()
+        })
+        sess = db.get(WhatsAppSession, f"resumen_doctora_{turno}")
+        if not sess:
+            sess = WhatsAppSession(key=f"resumen_doctora_{turno}", value=payload)
+            db.add(sess)
+        else:
+            sess.value = payload
+            sess.updated_at = datetime.now(timezone.utc)
+
+        hb = db.get(WorkerHeartbeat, "worker_resumen_turnos_doctora")
+        if hb:
+            meta_dict = dict(hb.meta or {})
+            meta_dict[f"resumen_{turno}"] = {"fecha": hoy_str, "estado": estado}
+            meta_dict[f"ultimo_resumen_{turno}"] = hoy_str
+            hb.meta = meta_dict
+        db.commit()
+        return True
+    except Exception as e_save:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        safe_err = sanitizar_error(e_save)["message"]
+        print(f"[ERROR] [Resumen Turno Error Critico] No se pudo persistir estado '{estado}' en BD: {safe_err}")
+        raise e_save
 
 def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = None) -> Optional[dict]:
     global ultimo_resumen_manana, ultimo_resumen_tarde
@@ -627,17 +924,36 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
         return None
 
     if forzar_turno:
-        es_turno_manana = (forzar_turno.lower() in ("manana", "mañana"))
-        es_turno_tarde = not es_turno_manana
+        ft_clean = str(forzar_turno).strip().lower()
+        if ft_clean not in ("manana", "mañana", "tarde"):
+            raise ValueError(f"forzar_turno solo admite 'manana' o 'tarde', recibido: '{forzar_turno}'")
+        es_turno_manana = (ft_clean in ("manana", "mañana"))
+        es_turno_tarde = (ft_clean == "tarde")
     else:
-        es_turno_manana = (weekday <= 5) and (hora == 8 and 38 <= minuto <= 43) and (ultimo_resumen_manana != hoy_str)
-        es_turno_tarde = (weekday <= 4) and (hora == 15 and 8 <= minuto <= 13) and (ultimo_resumen_tarde != hoy_str)
+        try:
+            estado_manana_bd = _resumen_registrado_hoy(db, "manana", hoy_str)
+            estado_tarde_bd = _resumen_registrado_hoy(db, "tarde", hoy_str)
+            manana_ya_registrado = (ultimo_resumen_manana == hoy_str) or (estado_manana_bd in ("despachado", "incierto"))
+            tarde_ya_registrado = (ultimo_resumen_tarde == hoy_str) or (estado_tarde_bd in ("despachado", "incierto"))
+        except Exception as err_db:
+            print(f"[BLOQUEO] [Resumen Turno] Abortando ciclo: BD inaccesible para verificar estado previo. Previniendo duplicados.")
+            return {"ok": False, "error": "DATABASE_UNAVAILABLE_RESUMEN_ABORTED"}
+
+        if manana_ya_registrado:
+            ultimo_resumen_manana = hoy_str
+        if tarde_ya_registrado:
+            ultimo_resumen_tarde = hoy_str
+
+        es_turno_manana = (weekday <= 5) and (hora == 8 and 38 <= minuto <= 43) and not manana_ya_registrado
+        es_turno_tarde = (weekday <= 4) and (hora == 15 and 8 <= minuto <= 13) and not tarde_ya_registrado
 
     if not (es_turno_manana or es_turno_tarde):
         return None
 
+    turno_clave = "manana" if es_turno_manana else "tarde"
     turno_nombre = "Mañana" if es_turno_manana else "Tarde"
     horario_turno_texto = "09:00 a 12:00" if es_turno_manana else "15:30 a 19:30"
+    tipo_notif = "resumen_doctora_manana" if es_turno_manana else "resumen_doctora_tarde"
 
     if es_turno_manana:
         dt_ini_turno = datetime(hoy.year, hoy.month, hoy.day, 9, 0, 0, tzinfo=tz_bol)
@@ -706,19 +1022,72 @@ def worker_resumen_turnos_doctora(db: Session, forzar_turno: Optional[str] = Non
         )
 
     doc_tel = getattr(settings, "DOCTORA_TELEFONO", "+59178472875")
+    gateway_url = os.getenv("WHATSAPP_GATEWAY_URL", os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")).rstrip("/")
+    timeout_resumen = httpx.Timeout(connect=3.0, read=15.0, write=5.0, pool=3.0)
     try:
-        httpx.post(
-            "http://127.0.0.1:8080/send-message",
+        resp = httpx.post(
+            f"{gateway_url}/send-message",
             json={"number": doc_tel, "text": mensaje, "message": mensaje},
-            timeout=15.0
+            timeout=timeout_resumen
         )
-        print(f"✅ [Resumen Turno {turno_nombre}] Enviado exitosamente a la Dra. Pamela ({doc_tel})")
+        if resp.status_code in (200, 201):
+            print(f"[OK] [Resumen Turno {turno_nombre}] Enviado exitosamente a la Dra. Pamela ({enmascarar_telefono(doc_tel)})")
+            if not forzar_turno:
+                if es_turno_manana:
+                    ultimo_resumen_manana = hoy_str
+                else:
+                    ultimo_resumen_tarde = hoy_str
+            try:
+                _guardar_resumen_registrado(db, turno_clave, hoy_str, estado="despachado")
+            except Exception as err_p:
+                safe_err = sanitizar_error(err_p)["message"]
+                print(f"[ALERTA] [Resumen Turno] Despacho exitoso pero falló persistencia en BD: {safe_err}")
+                return {"ok": True, "turno": turno_nombre, "advertencia": "PERSISTENCIA_FALLIDA", "total_pacientes": len(citas)}
+            # Retorno sanitizado: CERO exposición de nombres o citas de pacientes en respuestas API
+            return {"ok": True, "turno": turno_nombre, "total_pacientes": len(citas)}
+        elif resp.status_code in (400, 422):
+            print(f"[ALERTA] [Resumen Turno Error] Gateway rechazó solicitud HTTP {resp.status_code}")
+            return {"ok": False, "turno": turno_nombre, "error": f"Gateway HTTP {resp.status_code}"}
+        else:
+            # HTTP 500 u otros errores de servidor: resultado incierto
+            print(f"[ALERTA] [Resumen Turno Incierto] Gateway respondió HTTP {resp.status_code}. Marcando turno como 'incierto' para evitar duplicados.")
+            if not forzar_turno:
+                if es_turno_manana:
+                    ultimo_resumen_manana = hoy_str
+                else:
+                    ultimo_resumen_tarde = hoy_str
+            try:
+                _guardar_resumen_registrado(db, turno_clave, hoy_str, estado="incierto")
+            except Exception:
+                pass
+            return {"ok": False, "turno": turno_nombre, "error": f"GATEWAY_{resp.status_code}_INCIERTO_EVITADO_DUPLICADO"}
+    except (httpx.ReadTimeout, httpx.WriteTimeout):
+        # Resultado incierto: el mensaje probablemente fue enviado pero la respuesta demoró >15s.
+        print(f"[ALERTA] [Resumen Turno Incierto] Timeout de lectura (>15s). Marcando 'incierto' en BD para proteger a la Dra. Pamela contra duplicados.")
         if not forzar_turno:
             if es_turno_manana:
                 ultimo_resumen_manana = hoy_str
             else:
                 ultimo_resumen_tarde = hoy_str
-        return {"ok": True, "turno": turno_nombre, "mensaje": mensaje, "total_pacientes": len(citas)}
+        try:
+            _guardar_resumen_registrado(db, turno_clave, hoy_str, estado="incierto")
+        except Exception:
+            pass
+        return {"ok": False, "turno": turno_nombre, "error": "TIMEOUT_INCIERTO_EVITADO_DUPLICADO"}
+    except (httpx.ConnectError, httpx.ConnectTimeout) as err_conn:
+        safe_conn = sanitizar_error(err_conn)["message"]
+        print(f"[ALERTA] [Resumen Turno Error] Gateway inaccesible: {safe_conn}")
+        return {"ok": False, "turno": turno_nombre, "error": safe_conn}
     except Exception as err_envio:
-        print(f"⚠️ [Resumen Turno Error] No se pudo enviar resumen a la Dra. Pamela: {err_envio}")
-        return {"ok": False, "error": str(err_envio)}
+        safe_envio = sanitizar_error(err_envio)["message"]
+        print(f"[ALERTA] [Resumen Turno Incierto] Error inesperado en despacho: {safe_envio}. Marcando 'incierto' en BD para evitar duplicados.")
+        if not forzar_turno:
+            if es_turno_manana:
+                ultimo_resumen_manana = hoy_str
+            else:
+                ultimo_resumen_tarde = hoy_str
+        try:
+            _guardar_resumen_registrado(db, turno_clave, hoy_str, estado="incierto")
+        except Exception:
+            pass
+        return {"ok": False, "turno": turno_nombre, "error": safe_envio}

@@ -1,5 +1,8 @@
 import os
-from fastapi import FastAPI
+import re
+import json
+from typing import Optional
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -69,39 +72,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint de salud del sistema y monitoreo de workers
+# Endpoint de salud público minimalista (Cero información interna expuesta)
 @app.get("/api/salud")
 def salud():
-    workers_status = {}
+    return {
+        "ok": True,
+        "status": "online"
+    }
+
+# Endpoint administrativo protegido para auditoría y diagnóstico de workers
+@app.get("/api/admin/workers/health")
+def admin_workers_health(x_auth_token: Optional[str] = Header(None, alias="X-Auth-Token")):
+    import secrets
+    admin_token = os.getenv("ADMIN_HEALTH_TOKEN", "").strip()
+    if not admin_token or not x_auth_token or not secrets.compare_digest(x_auth_token, admin_token):
+        raise HTTPException(status_code=401, detail="No autorizado para auditoria de infraestructura")
+
+    from run_workers import WORKER_POLICIES, SAFE_ERROR_CATALOG
+    from workers import SAFE_ALLOWED_EXCEPTION_TYPES
+    workers_report = {}
     try:
         db = SessionLocal()
         try:
             ahora = datetime.now(timezone.utc)
-            rows = db.query(WorkerHeartbeat).all()
-            for r in rows:
-                segundos = int((ahora - r.last_heartbeat).total_seconds()) if r.last_heartbeat else None
-                # Se considera activo si reportó en los últimos 5 minutos (300s)
-                # Excepto ortodoncia que corre cada 10 ciclos (~10 min)
-                limite_tolerancia = 900 if "ortodoncia" in r.worker_name or "keepalive" in r.worker_name else 300
-                alerta = bool(r.last_error or (segundos is not None and segundos > limite_tolerancia))
-                workers_status[r.worker_name] = {
-                    "estado": "alerta" if alerta else "activo",
+            hbs = {h.worker_name: h for h in db.query(WorkerHeartbeat).all()}
+
+            for w_name, policy in WORKER_POLICIES.items():
+                h = hbs.get(w_name)
+                tolerancia = policy["tolerancia_seg"]
+
+                if not h or not h.last_heartbeat:
+                    estado = "INACTIVO"
+                    segundos = None
+                else:
+                    hb_dt = h.last_heartbeat
+                    if hb_dt.tzinfo is None:
+                        hb_dt = hb_dt.replace(tzinfo=timezone.utc)
+                    segundos = int((ahora - hb_dt).total_seconds())
+                    if segundos > (tolerancia * 1.5):
+                        estado = "INACTIVO"
+                    elif segundos > tolerancia:
+                        estado = "ADVERTENCIA"
+                    elif h.last_error:
+                        estado = "DEGRADADO"
+                    else:
+                        estado = "ACTIVO"
+
+                err_obj = None
+                if h and h.last_error:
+                    try:
+                        raw_obj = json.loads(h.last_error)
+                        if isinstance(raw_obj, dict):
+                            err_code = str(raw_obj.get("error_code", "GENERIC_ERROR"))[:50]
+                            if err_code not in SAFE_ERROR_CATALOG:
+                                err_code = "GENERIC_ERROR"
+                            raw_type = str(raw_obj.get("error_type", "ControlledOperationalException"))[:50]
+                            err_type = raw_type if raw_type in SAFE_ALLOWED_EXCEPTION_TYPES else "ControlledOperationalException"
+                            # Mensaje controlado garantizado por catálogo inmutable (cero fuga de secretos)
+                            err_obj = {
+                                "error_type": err_type,
+                                "error_code": err_code,
+                                "message": SAFE_ERROR_CATALOG.get(err_code, SAFE_ERROR_CATALOG["GENERIC_ERROR"])
+                            }
+                        else:
+                            err_obj = {"error_type": "ControlledOperationalException", "error_code": "GENERIC_ERROR", "message": SAFE_ERROR_CATALOG["GENERIC_ERROR"]}
+                    except Exception:
+                        err_obj = {"error_type": "ControlledOperationalException", "error_code": "GENERIC_ERROR", "message": SAFE_ERROR_CATALOG["GENERIC_ERROR"]}
+
+                workers_report[w_name] = {
+                    "estado": estado,
                     "hace_segundos": segundos,
-                    "last_error": r.last_error,
-                    "meta": r.meta or {}
+                    "tolerancia_seg": tolerancia,
+                    "ultimo_exito": h.last_success.isoformat() if (h and h.last_success) else None,
+                    "error_reciente": err_obj
                 }
         finally:
             db.close()
-    except Exception as e_hb:
-        workers_status["_error"] = str(e_hb)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error consultando telemetria de workers")
 
-    return {
-        "ok": True,
-        "version": "2.2.0",
-        "estado": "operativo",
-        "tz": settings.TZ_CONSULTORIO,
-        "workers": workers_status
-    }
+    return {"ok": True, "workers": workers_report}
 
 # Incluir Routers Modulares
 app.include_router(auth.router)

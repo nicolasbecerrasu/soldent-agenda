@@ -11,10 +11,14 @@ try:
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
+    import httplib2
+    import google_auth_httplib2
 except ImportError:
     Credentials = None
     build = None
     HttpError = Exception
+    httplib2 = None
+    google_auth_httplib2 = None
 
 def get_google_creds():
     if not Credentials:
@@ -31,7 +35,13 @@ def get_google_creds():
 def get_calendar_service():
     if not build:
         raise RuntimeError("google-api-python-client no está instalado en este entorno.")
-    return build("calendar", "v3", credentials=get_google_creds())
+    if not (httplib2 and google_auth_httplib2):
+        raise RuntimeError("google-auth-httplib2 y httplib2 son requeridos para garantizar timeout de red (15s) en Google Calendar.")
+    creds = get_google_creds()
+    # Timeout específico y aislado exclusivamente para el cliente HTTP de Google Calendar
+    http_client = httplib2.Http(timeout=15.0)
+    authorized_http = google_auth_httplib2.AuthorizedHttp(creds, http=http_client)
+    return build("calendar", "v3", http=authorized_http)
 
 def registrar_auditoria(db: Session, cita_id, actor: str, accion: str, antes: dict = None, despues: dict = None):
     db.add(AuditoriaCita(cita_id=cita_id, actor=actor, accion=accion, antes=antes, despues=despues))
