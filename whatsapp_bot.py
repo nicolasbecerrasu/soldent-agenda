@@ -3,6 +3,7 @@ import os
 import sys
 import re
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request
@@ -29,7 +30,9 @@ from bot.handlers import (
     obtener_metricas_administrador,
     procesar_mensaje_con_gemini,
     construir_prompt_sistema,
+    actualizar_estado_cita_paciente,
 )
+
 
 if sys.platform == "win32":
     try:
@@ -117,8 +120,10 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 app = FastAPI(title="Soldent WhatsApp Bot", lifespan=lifespan)
+_user_locks = defaultdict(asyncio.Lock)
 
 @app.post("/webhook")
+
 async def recibir_mensaje(req: Request):
     try:
         data = await req.json()
@@ -177,6 +182,10 @@ async def recibir_mensaje(req: Request):
             await enviar_mensaje_whatsapp(remitente, fallback_adm)
             return {"ok": True, "admin": True, "respuesta": fallback_adm}
 
+    async with _user_locks[remitente]:
+        return await _procesar_mensaje_paciente(remitente, nombre, texto, tel_paciente)
+
+async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, tel_paciente: str):
     global mensajes_procesados_recientes
     ahora_ts = datetime.now().timestamp()
     mensajes_procesados_recientes = {k: v for k, v in mensajes_procesados_recientes.items() if ahora_ts - v < 60}
@@ -187,6 +196,7 @@ async def recibir_mensaje(req: Request):
     mensajes_procesados_recientes[clave_msg] = ahora_ts
 
     safe_print(f"\n[WhatsApp IN] De: {nombre} ({remitente} | {tel_paciente}): {texto}")
+
 
     texto_limpio_cmd = texto.strip().lower()
 
@@ -211,10 +221,8 @@ async def recibir_mensaje(req: Request):
             safe_print(f"⚠️ [Error Opt-out]: {e_opt}")
 
         msg_optout_resp = (
-            "✅ *Preferencia registrada con éxito.*\n\n"
-            f"Estimado/a {nombre}, hemos cancelado el envío de recordatorios automáticos por WhatsApp para su número. "
-            "No volverá a recibir notificaciones programadas.\n\n"
-            "_(Si en algún momento desea reactivarlos para sus consultas, solo responda con la palabra *ACTIVAR*). ¡Que tenga un excelente día! ✨_"
+            f"Listo, {nombre}. Hemos cancelado los recordatorios automáticos para su número.\n\n"
+            "_(Para reactivarlos en cualquier momento responda ACTIVAR). ¡Que tenga buen día! ✨_"
         )
         await enviar_mensaje_whatsapp(remitente, msg_optout_resp)
         return {"ok": True, "optout": True, "respuesta": msg_optout_resp}
@@ -239,8 +247,7 @@ async def recibir_mensaje(req: Request):
             safe_print(f"⚠️ [Error Opt-in]: {e_opt}")
 
         msg_optin_resp = (
-            "✅ *Recordatorios reactivados con éxito.*\n\n"
-            f"Estimado/a {nombre}, con gusto le enviaremos nuevamente los recordatorios automáticos de sus citas en SOLDENT con la Dra. Pamela. ¡Será un gusto atenderle! ✨"
+            f"✅ Recordatorios reactivados, {nombre}. Con gusto le avisaremos de sus próximas citas en Soldent. ¡Hasta pronto! ✨"
         )
         await enviar_mensaje_whatsapp(remitente, msg_optin_resp)
         return {"ok": True, "optin": True, "respuesta": msg_optin_resp}
@@ -248,34 +255,40 @@ async def recibir_mensaje(req: Request):
     # 3. CONFIRMACIÓN INTERACTIVA BIDIRECCIONAL: "CONFIRMO" / "CONFIRMAR"
     if texto_limpio_cmd in ("confirmo", "confirmado", "confirmar", "si confirmo", "sí confirmo", "si asistire", "sí asistiré", "asistire", "asistiré"):
         safe_print(f"✅ [Confirmación Bidireccional] Paciente {nombre} ({tel_paciente}) confirmó su cita.")
-        cita_confirmada = False
-        try:
-            db_conf = SessionLocal()
-            try:
-                tel_clean = re.sub(r"\D", "", tel_paciente)
-                tel_8 = tel_clean[-8:] if len(tel_clean) >= 8 else tel_clean
-                ahora_utc = datetime.now(timezone.utc)
-                citas_p = db_conf.query(Cita, Paciente).join(Paciente, Cita.paciente_id == Paciente.id).filter(
-                    Cita.inicio >= ahora_utc - timedelta(hours=2),
-                    Cita.estado != 'cancelada'
-                ).all()
-                for c, p in citas_p:
-                    p_tel = re.sub(r"\D", "", str(p.telefono or ""))
-                    if p_tel and (p_tel == tel_clean or tel_8 in p_tel or p_tel in tel_clean):
-                        c.estado = "confirmada"
-                        cita_confirmada = True
-                db_conf.commit()
-            finally:
-                db_conf.close()
-        except Exception as e_conf:
-            safe_print(f"⚠️ [Error Confirmacion]: {e_conf}")
+        info_c = await asyncio.to_thread(actualizar_estado_cita_paciente, tel_paciente, "confirmada")
+        nombre_p = info_c.get("paciente_nombre") or nombre
 
-        msg_conf_resp = (
-            f"✅ ¡Muchas gracias, {nombre}! Su cita odontológica ha sido *confirmada con éxito* en nuestro sistema.\n\n"
-            f"👩‍⚕️ La *Dra. Pamela Pinto Suárez* le estará esperando puntualmente en {settings.CLINICA_DIRECCION}. ¡Que tenga un excelente día! 🦷✨"
-        )
+        if info_c and info_c.get("ya_estaba_confirmada"):
+            msg_conf_resp = f"¡Con mucho gusto, {nombre_p}! Su cita para el *{info_c['fecha']} a las {info_c['hora']}* ya se encuentra confirmada. ¡Le esperamos en Soldent! 🦷✨"
+        elif info_c:
+            msg_conf_resp = (
+                f"¡Cita confirmada, {nombre_p}! 🦷✨\n"
+                f"La {settings.DOCTORA_NOMBRE} le espera el *{info_c['fecha']} a las {info_c['hora']}* en Soldent ({settings.CLINICA_DIRECCION}). ¡Hasta pronto!"
+            )
+            # Notificar a la Dra. Pamela (+591 78472875) UNA SOLA VEZ
+            msg_doc = (
+                f"🦷 *SOLDENT - Cita Confirmada por Paciente*\n\n"
+                f"Estimada Dra. Pamela, el paciente *{nombre_p}* ({tel_paciente}) "
+                f"acaba de confirmar su cita para el *{info_c['fecha']} a las {info_c['hora']}*."
+            )
+            try:
+                await enviar_mensaje_whatsapp(settings.DOCTORA_TELEFONO, msg_doc)
+                safe_print(f"✅ [Alerta Confirmación] Notificación enviada a la Dra. Pamela por {nombre_p}")
+            except Exception as e_doc:
+                safe_print(f"⚠️ [Error Alerta Dra Confirmacion]: {e_doc}")
+        else:
+            msg_conf_resp = (
+                f"Hola {nombre}. No encontramos ninguna cita pendiente de confirmación a su nombre. "
+                "Si desea agendar una consulta, indíquenos qué día le queda cómodo."
+            )
+
+        if remitente not in historial_sesiones:
+            historial_sesiones[remitente] = []
+        historial_sesiones[remitente].append({"role": "user", "text": f"Paciente ({nombre}): {texto}"})
+        historial_sesiones[remitente].append({"role": "model", "text": msg_conf_resp})
+
         await enviar_mensaje_whatsapp(remitente, msg_conf_resp)
-        return {"ok": True, "confirmada": cita_confirmada, "respuesta": msg_conf_resp}
+        return {"ok": True, "confirmada": bool(info_c and not info_c.get("ya_estaba_confirmada")), "respuesta": msg_conf_resp}
 
     try:
         texto_respuesta = await asyncio.to_thread(
@@ -295,7 +308,7 @@ async def recibir_mensaje(req: Request):
                 "🦷 *SOLDENT - Paciente Interesado en Martes/Jueves*\n\n"
                 f"Dra. Pamela, el paciente *{nombre}* ({tel_paciente}) consultó por atención:\n"
                 f"💬 *Mensaje:* \"{texto}\"\n\n"
-                f"👉 El bot le indicó que coordine directamente con usted a su WhatsApp ({settings.DOCTORA_TELEFONO})."
+                f"👉 El bot le indicó coordinar a su WhatsApp directo ({settings.DOCTORA_TELEFONO})."
             )
             try:
                 await enviar_mensaje_whatsapp(settings.DOCTORA_TELEFONO, msg_alerta_dra)

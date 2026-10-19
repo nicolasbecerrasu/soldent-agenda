@@ -725,58 +725,35 @@ def worker_recordatorios(
             estado_desc = "confirmada" if cita.estado == "confirmada" else "programada"
 
             encabezados = [
-                "🦷 *SOLDENT - Recordatorio de Cita Odontológica*",
+                "🦷 *SOLDENT - Recordatorio de Cita*",
                 "🦷 *Recordatorio de Consulta - SOLDENT*",
-                "🦷 *SOLDENT - Su Cita Odontológica*",
-                "🦷 *SOLDENT - Odontología Integral*",
             ]
             saludos = [
+                f"Hola *{paciente.nombre}*",
                 f"Estimado/a *{paciente.nombre}*",
-                f"¡Hola *{paciente.nombre}*!",
-                f"Buen día *{paciente.nombre}*",
-                f"Hola *{paciente.nombre}*, un cordial saludo",
             ]
             cuerpos = [
-                f"le recordamos que tiene una consulta {estado_desc} con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
-                f"le escribimos para recordarle su atención programada con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
-                f"queremos recordarle su cita odontológica con la *Dra. Pamela Pinto Suárez* este {cuando_str} a las *{hora_str}* ({hora_12}).",
+                f"le recordamos su cita con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
+                f"le recordamos su atención con la *Dra. Pamela Pinto Suárez* para {cuando_str} a las *{hora_str}* ({hora_12}).",
             ]
             llamados_accion = [
-                "👉 *Por favor responda a este mensaje con un \"Confirmo\" para validar su asistencia (o avísenos por aquí si necesita reprogramar).*",
-                "👉 *Por favor confirme su asistencia respondiendo \"Confirmo\" a este mensaje (o indíquenos por aquí si desea reprogramar).*",
-                "👉 *Para validar su turno, por favor responda a este mensaje con \"Confirmo\" (o avísenos por aquí si no podrá asistir).*",
-            ]
-            despedidas = [
-                "¡Le esperamos en el consultorio! ✨",
-                "¡Será un gusto atenderle! ✨",
-                "¡Que tenga un excelente día! ✨",
-                "Quedamos atentos a su llegada. ✨",
-            ]
-            consejos_contacto = [
-                "💡 *Tip:* Guarde este número en sus contactos para recibir siempre sus indicaciones y recetas.",
-                "📌 Le sugerimos guardar el contacto de SOLDENT en su agenda para una mejor comunicación.",
-                "",
+                "👉 *Responda \"Confirmo\" para asegurar su turno (o avísenos si necesita reprogramar).*",
+                "👉 *Por favor responda \"Confirmo\" para validar su asistencia (o indíquenos si desea reprogramar).*",
             ]
             optouts = [
-                "_(Si ya no desea recibir recordatorios automáticos por WhatsApp, responda SALIR)_",
-                "_(Para dejar de recibir estos avisos por WhatsApp, puede responder SALIR)_",
+                "_(Para no recibir recordatorios responda SALIR)_",
             ]
 
             partes_mensaje = [
                 random.choice(encabezados),
                 "",
                 f"{random.choice(saludos)}, {random.choice(cuerpos)}",
+                "📍 *Lugar:* Calle Lemoine 407 esq. Vallegrande.",
                 "",
-                f"📍 *Consultorio:* Calle Lemoine 407 esq. Vallegrande, Santa Cruz de la Sierra.",
+                f"{random.choice(llamados_accion)} ¡Le esperamos! ✨",
                 "",
-                random.choice(llamados_accion),
-                "",
-                random.choice(despedidas),
+                random.choice(optouts)
             ]
-            tip = random.choice(consejos_contacto)
-            if tip:
-                partes_mensaje.extend(["", tip])
-            partes_mensaje.extend(["", random.choice(optouts)])
 
             mensaje = "\n".join(partes_mensaje).strip()
 

@@ -32,14 +32,11 @@ class Settings:
 settings = Settings()
 
 MENSAJE_OFICIAL_DEFAULT = (
-    "¡Hola! 🦷✨ Gracias por comunicarte con *Soldent - Soluciones Dentales*.\n\n"
-    f"👩‍⚕️ *Especialista:* {settings.DOCTORA_NOMBRE} (Odontología Integral & Ortodoncia)\n"
-    f"📍 *Ubicación:* {settings.CLINICA_DIRECCION}\n"
-    f"📞 *Contacto / Urgencias:* {settings.DOCTORA_TELEFONO}\n\n"
-    "⏰ *Horarios Oficiales de Atención:*\n"
-    "• Lunes a Viernes: 09:00 a 12:00 y 15:30 a 19:30\n"
-    "• Sábados: 09:00 a 12:00 (Tardes y domingos cerrado)\n\n"
-    "Todas nuestras atenciones se realizan bajo *Consulta Odontológica* previa cita. "
-    "Para agendar, por favor indícanos tu nombre completo y el día y hora de tu preferencia, "
-    f"o comunícate directamente al {settings.DOCTORA_TELEFONO}. ¡Será un gusto atenderte!"
+    "¡Hola! 🦷✨ Bienvenido a *Soldent*.\n\n"
+    f"👩‍⚕️ *{settings.DOCTORA_NOMBRE}* (Odontología Integral & Ortodoncia)\n"
+    f"📍 {settings.CLINICA_DIRECCION}\n"
+    "⏰ *Horarios:* Lun-Vie 09:00-12:00 y 15:30-19:30 | Sáb 09:00-12:00\n\n"
+    "Para agendar una cita, indíquenos su nombre completo y el día y hora de su preferencia, "
+    f"o escriba al WhatsApp de la doctora: {settings.DOCTORA_TELEFONO}."
 )
+

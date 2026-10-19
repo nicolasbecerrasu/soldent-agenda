@@ -9,7 +9,7 @@ from services.booking_tools import crear_cita
 from bot.state import historial_sesiones
 
 def actualizar_estado_cita_paciente(tel_paciente: str, nuevo_estado: str) -> dict:
-    """Actualiza la cita más próxima del paciente a 'confirmada' o 'cancelada' y devuelve sus datos."""
+    """Actualiza la cita más próxima del paciente a 'confirmada' o 'cancelada' y devuelve sus datos con control de idempotencia."""
     tz_bol = ZoneInfo(settings.TZ_CONSULTORIO)
     ahora = datetime.now(tz_bol)
     tel_limpio = re.sub(r"\D", "", str(tel_paciente or ""))
@@ -22,6 +22,7 @@ def actualizar_estado_cita_paciente(tel_paciente: str, nuevo_estado: str) -> dic
                 Cita.estado.in_(["pendiente", "confirmada"])
             ).order_by(Cita.inicio.asc()).all()
 
+            candidatas = []
             for cita, pac in rows:
                 c_ini = cita.inicio.astimezone(tz_bol) if cita.inicio.tzinfo else cita.inicio.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz_bol)
                 # Solo citas futuras o que empezaron hace menos de 2 horas
@@ -33,22 +34,51 @@ def actualizar_estado_cita_paciente(tel_paciente: str, nuevo_estado: str) -> dic
 
                 if (pac_tel_clean and len(pac_tel_clean) >= 7 and tel_8 and 
                     (tel_8 == pac_tel_8 or tel_8 in pac_tel_clean or pac_tel_8 in tel_limpio)):
-                    cita.estado = nuevo_estado
-                    cita.updated_at = datetime.now(ZoneInfo("UTC"))
-                    db.commit()
+                    candidatas.append((cita, pac, c_ini))
 
-                    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-                    d_nom = dias[c_ini.weekday()]
-                    return {
-                        "paciente_nombre": pac.nombre,
-                        "fecha": f"{d_nom} {c_ini.day:02d}/{c_ini.month:02d}",
-                        "hora": c_ini.strftime("%H:%M")
-                    }
+            if not candidatas:
+                return {}
+
+            # Prioridad: buscar cita que esté en estado 'pendiente'
+            cita_elegida = None
+            pac_elegido = None
+            c_ini_elegido = None
+
+            for c, p, c_ini in candidatas:
+                if c.estado == "pendiente":
+                    cita_elegida = c
+                    pac_elegido = p
+                    c_ini_elegido = c_ini
+                    break
+
+            # Si no hay pendientes, tomar la primera existente (ej. ya confirmada)
+            if not cita_elegida:
+                cita_elegida, pac_elegido, c_ini_elegido = candidatas[0]
+
+            estado_anterior = cita_elegida.estado
+            ya_estaba_confirmada = (estado_anterior == "confirmada" and nuevo_estado == "confirmada")
+
+            if cita_elegida.estado != nuevo_estado:
+                cita_elegida.estado = nuevo_estado
+                cita_elegida.updated_at = datetime.now(ZoneInfo("UTC"))
+                db.commit()
+
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            d_nom = dias[c_ini_elegido.weekday()]
+            return {
+                "paciente_nombre": pac_elegido.nombre,
+                "fecha": f"{d_nom} {c_ini_elegido.day:02d}/{c_ini_elegido.month:02d}",
+                "hora": c_ini_elegido.strftime("%H:%M"),
+                "estado_anterior": estado_anterior,
+                "ya_estaba_confirmada": ya_estaba_confirmada,
+                "cita_id": str(cita_elegida.id)
+            }
         finally:
             db.close()
     except Exception as e:
         safe_print(f"[Error Actualizar Estado Cita Paciente]: {e}")
     return {}
+
 
 def construir_prompt_sistema(tel_paciente: str) -> str:
     tz_bolivia = ZoneInfo(settings.TZ_CONSULTORIO)
@@ -156,17 +186,20 @@ REGLAS DE ATENCIÓN Y AGENDAMIENTO:
    - Si el paciente CONFIRMA su nombre y un horario válido disponible (que no pertenezca a turnos ocupados), incluye al final de tu mensaje:
      [RESERVAR: Nombre Del Paciente | YYYY-MM-DDTHH:MM:SS]
 
-4. SI EL PACIENTE CONFIRMA SU CITA / ASISTENCIA (ej: "Confirmo", "Ahí estaré", "Sí voy a ir", "Asistiré"):
-   - Incluye al final de tu mensaje la etiqueta [CONFIRMAR_CITA].
-   - Agradécele amablemente y recuérdale que por aquí también puede agendar y consultar sus próximas citas.
+4. CONFIRMACIÓN DE CITA (REGLA ESTRICTA):
+   - Solo incluye la etiqueta [CONFIRMAR_CITA] si el paciente afirma explícitamente que asistirá o confirma (ej: "Confirmo", "Ahí estaré", "Sí voy", "Asistiré").
+   - NUNCA agregues la etiqueta [CONFIRMAR_CITA] si el mensaje es únicamente de cortesía, agradecimiento o despedida (ej: "Muchas gracias", "Gracias", "Ok", "De nada", "Hasta luego"). Para agradecimientos responde con una sola frase corta y amable (ej: "¡Con gusto! Nos vemos en su cita. 🦷✨").
+   - Si en el historial la cita ya fue confirmada, NO agregues [CONFIRMAR_CITA] de nuevo.
 
 5. SI EL PACIENTE CANCELA SU CITA O AVISA QUE NO PODRÁ IR (ej: "No podré ir", "Cancelo", "No voy a poder"):
    - Incluye al final de tu mensaje la etiqueta [CANCELAR_CITA].
-   - Confirma amablemente la liberación del horario y OFRÉCELE DE INMEDIATO REAGENDAR su consulta para otro día o turno (mañana o tarde) para no interrumpir su tratamiento.
+   - Confirma de forma breve la liberación del horario e invítale en 1 línea a reagendar para otro día si lo desea.
    - Si el paciente en el mismo mensaje pide reagendar para una fecha/hora válida disponible, incluye además la etiqueta [RESERVAR: Nombre | YYYY-MM-DDTHH:MM:SS].
 
-6. TRATO Y TONO:
-   - Sé cálido, educado y con trato amable típico de Santa Cruz de la Sierra ("¡Hola! Un gusto saludarte...", "Con todo gusto le ayudamos..."). Respuestas concisas para WhatsApp con emojis moderados.
+6. LONGITUD Y CONCISIÓN (REGLA FUNDAMENTAL - MENSAJES CORTOS):
+   - En WhatsApp los pacientes leen en el móvil: las respuestas deben ser BREVES, directas y cordiales (máximo 2 a 3 líneas).
+   - PROHIBIDO enviar parrafadas explicativas, mensajes recargados o discursos de bienvenida en medio de una conversación.
+   - Ve directo al grano con amabilidad y educación cruceña.
 """
 
 def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_paciente: str) -> str:
@@ -209,23 +242,18 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
                 f_hora = ""
 
             msg_confirmacion = (
-                f"¡Perfecto, {nombre_cita}! 🦷✨\n"
-                f"Su consulta odontológica ha quedado agendada y registrada en nuestro sistema con la {settings.DOCTORA_NOMBRE} para el {f_dia} a las {f_hora}.\n\n"
-                f"Le esperamos en nuestro consultorio ubicado en la {settings.CLINICA_DIRECCION}.\n\n"
-                f"Si tuviera alguna duda o inconveniente, puede escribirnos por aquí o llamar al {settings.DOCTORA_TELEFONO}.\n"
-                "¡Que tenga un excelente día!"
+                f"¡Cita agendada con éxito, {nombre_cita}! 🦷✨\n"
+                f"Le esperamos el *{f_dia} a las {f_hora}* con la {settings.DOCTORA_NOMBRE} en Soldent ({settings.CLINICA_DIRECCION}). ¡Hasta pronto!"
             )
             historial.append({"role": "model", "text": msg_confirmacion})
 
             # NOTIFICACIÓN INMEDIATA A LA DRA. PAMELA (+591 78472875)
             msg_alerta_doctora = (
                 "🦷 *SOLDENT - Nueva Cita Agendada por Bot*\n\n"
-                f"Estimada Dra. Pamela, un paciente acaba de agendar una consulta a través del asistente de WhatsApp:\n\n"
-                f"👤 *Paciente:* {nombre_cita}\n"
-                f"📱 *Teléfono:* {tel_paciente}\n"
+                f"👤 *Paciente:* {nombre_cita} ({tel_paciente})\n"
                 f"🗓️ *Fecha y Hora:* {f_dia} a las {f_hora}\n"
-                f"🩺 *Servicio:* Consulta Odontológica\n\n"
-                "✅ Ya se encuentra guardada en su agenda web y sincronizada con Google Calendar."
+                f"🩺 *Servicio:* Consulta Odontológica\n"
+                "✅ Guardada en agenda y Google Calendar."
             )
             try:
                 httpx.post(
@@ -241,7 +269,7 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
 
         elif "ERROR_HORARIO_OCUPADO" in resultado_reserva:
             msg_ocupado = (
-                "Ese horario ya se encuentra ocupado por otra cita en el consultorio. "
+                "Ese horario ya se encuentra ocupado en el consultorio. "
                 "Con gusto le ofrezco agendar en el siguiente turno libre o en un horario diferente dentro de nuestros turnos oficiales."
             )
             historial.append({"role": "model", "text": msg_ocupado})
@@ -250,15 +278,14 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
         elif "AVISO_CITA_EXISTENTE" in resultado_reserva:
             historial.append({"role": "model", "text": resultado_reserva})
             return (
-                f"¡Estimado/a {nombre_cita}! Le recordamos que ya cuenta con una consulta odontológica activa "
-                f"agendada en Soldent. Le esperamos en la {settings.CLINICA_DIRECCION}."
+                f"¡Estimado/a {nombre_cita}! Le recordamos que ya cuenta con una cita activa agendada en Soldent. "
+                f"Le esperamos en {settings.CLINICA_DIRECCION}."
             )
 
         elif "ERROR_MARTES_JUEVES_DIRECTO_DOCTORA" in resultado_reserva:
             msg_directo = (
-                f"¡Estimado/a {nombre_cita}! Las citas para los días martes y jueves se coordinan de manera exclusiva y personalizada directamente con la {settings.DOCTORA_NOMBRE}.\n\n"
-                f"📲 Por favor comuníquese directamente a su WhatsApp o llámele al *{settings.DOCTORA_TELEFONO}* para coordinar su espacio.\n\n"
-                "Si prefiere agendar por aquí mismo mediante el asistente, con mucho gusto podemos ayudarle para los días Lunes, Miércoles, Viernes o Sábado."
+                f"Las citas de martes y jueves se coordinan directamente con la {settings.DOCTORA_NOMBRE} al WhatsApp *{settings.DOCTORA_TELEFONO}*.\n\n"
+                "Si prefiere agendar por aquí mediante el asistente, con mucho gusto le ayudamos para Lunes, Miércoles, Viernes o Sábado."
             )
             historial.append({"role": "model", "text": msg_directo})
             return msg_directo
@@ -266,34 +293,41 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
         elif any(err in resultado_reserva for err in ("ERROR_RECESO_MEDIODIA", "ERROR_SABADO_TARDE_CERRADO", "ERROR_DOMINGO_CERRADO", "ERROR_HORARIO_NO_PERMITIDO")):
             historial.append({"role": "model", "text": resultado_reserva})
             return (
-                "El horario solicitado está fuera de nuestros turnos oficiales. "
-                "Atendemos de Lunes a Viernes de 09:00 a 12:00 y de 15:30 a 19:30, y Sábados de 09:00 a 12:00. "
-                "¿Qué turno de esos le quedaría más cómodo?"
+                "Ese horario está fuera de atención. "
+                "Atendemos Lun-Vie 09:00-12:00 y 15:30-19:30, y Sáb 09:00-12:00. ¿Qué horario le queda mejor?"
             )
 
     # 1. Detectar confirmación de cita (vía tag de Gemini o intención explícita del paciente)
     texto_l = texto.lower()
-    es_confirmacion = (
+
+    # Cortesías habituales que NO deben interpretarse como confirmación nueva
+    es_solo_cortesia = any(w in texto_l for w in ("muchas gracias", "muchisimas gracias", "mil gracias", "gracias", "ok gracias", "de nada", "igualmente", "que tenga buen dia")) and not any(w in texto_l for w in ("confirmo", "confirmado", "ahi estare", "ahí estaré", "voy a ir", "asistire", "asistiré"))
+
+    es_confirmacion = not es_solo_cortesia and (
         "[CONFIRMAR_CITA]" in respuesta_raw or
-        any(w in texto_l for w in ("confirmo", "confirmado", "ahi estare", "ahí estaré", "si voy", "sí voy", "asistire", "asistiré", "voy a ir", "estare puntual", "estaré puntual", "seguro voy"))
+        any(w in texto_l for w in ("confirmo", "confirmado", "confirmar", "ahi estare", "ahí estaré", "si voy", "sí voy", "asistire", "asistiré", "voy a ir", "estare puntual", "estaré puntual", "seguro voy"))
     )
     if es_confirmacion:
         info_c = actualizar_estado_cita_paciente(tel_paciente, "confirmada")
         nombre_p = info_c.get("paciente_nombre") or nombre
-        msg_resp = (
-            f"¡Muchísimas gracias por confirmar, {nombre_p}! 🦷✨\n\n"
-            f"Su asistencia con la {settings.DOCTORA_NOMBRE} ha quedado confirmada. La doctora y el equipo de SOLDENT le esperan puntualmente.\n\n"
-            f"📲 *Dato útil:* Recuerde que a través de este mismo chat de WhatsApp puede escribirnos en cualquier momento para *consultar, reprogramar o agendar sus próximas citas* de forma rápida y automática.\n\n"
-            f"¡Que tenga un excelente día! 🌸"
-        )
-        historial.append({"role": "model", "text": msg_resp})
 
-        # Notificar a la Dra. Pamela (+591 78472875)
-        if info_c:
+        if info_c and info_c.get("ya_estaba_confirmada"):
+            msg_resp = f"¡Con mucho gusto, {nombre_p}! Su cita para el *{info_c['fecha']} a las {info_c['hora']}* ya se encuentra confirmada. ¡Le esperamos en Soldent! 🦷✨"
+            historial.append({"role": "model", "text": msg_resp})
+            return msg_resp
+
+        elif info_c:
+            msg_resp = (
+                f"¡Cita confirmada, {nombre_p}! 🦷✨\n"
+                f"La {settings.DOCTORA_NOMBRE} le espera el *{info_c['fecha']} a las {info_c['hora']}* en Soldent ({settings.CLINICA_DIRECCION}). ¡Hasta pronto!"
+            )
+            historial.append({"role": "model", "text": msg_resp})
+
+            # Notificar a la Dra. Pamela (+591 78472875) UNA SOLA VEZ
             msg_doc = (
                 f"🦷 *SOLDENT - Cita Confirmada por Paciente*\n\n"
                 f"Estimada Dra. Pamela, el paciente *{nombre_p}* ({tel_paciente}) "
-                f"acaba de confirmar su asistencia para el *{info_c['fecha']} a las {info_c['hora']}* mediante el chat de WhatsApp."
+                f"acaba de confirmar su asistencia para el *{info_c['fecha']} a las {info_c['hora']}* mediante WhatsApp."
             )
             try:
                 httpx.post(
@@ -305,7 +339,15 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
             except Exception as e:
                 safe_print(f"⚠️ [Alerta Doctora Confirmacion]: {e}")
 
-        return msg_resp
+            return msg_resp
+
+        else:
+            msg_resp = (
+                f"Hola {nombre}. No encontramos ninguna cita pendiente de confirmación a su nombre. "
+                "Si desea agendar una consulta, indíquenos qué día y horario le queda cómodo y con gusto le ayudamos."
+            )
+            historial.append({"role": "model", "text": msg_resp})
+            return msg_resp
 
     # 2. Detectar cancelación de cita (vía tag de Gemini o intención explícita del paciente)
     es_cancelacion = (
@@ -316,9 +358,8 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
         info_c = actualizar_estado_cita_paciente(tel_paciente, "cancelada")
         nombre_p = info_c.get("paciente_nombre") or nombre
         msg_resp = (
-            f"Entendido, {nombre_p}, muchas gracias por avisarnos con tiempo. Su horario ha quedado liberado. 🦷✨\n\n"
-            f"🔄 *¿Desea que reprogramemos su atención para otro día?*\n"
-            f"Indíqueme por favor qué día prefiere o si le queda mejor en el turno de la mañana (09:00 a 12:00) o de la tarde (15:30 a 19:30), y con todo gusto le reservo su nuevo espacio para que continúe su tratamiento sin demoras. 🌸"
+            f"Entendido, {nombre_p}. Su cita fue cancelada y el horario liberado. 🦷\n\n"
+            f"Si desea reagendar para otro día, avíseme qué fecha u horario (mañana o tarde) prefiere y con gusto se la programo."
         )
         historial.append({"role": "model", "text": msg_resp})
 
