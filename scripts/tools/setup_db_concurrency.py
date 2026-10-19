@@ -10,6 +10,11 @@ SQL_TRIGGER = """
 CREATE OR REPLACE FUNCTION agenda.check_cita_overlap()
 RETURNS TRIGGER AS $func$
 BEGIN
+    -- Si es UPDATE y las fechas de inicio y fin no cambiaron, no validar solapamiento (ej. actualizar token, estado, notas)
+    IF TG_OP = 'UPDATE' AND OLD.inicio = NEW.inicio AND OLD.fin = NEW.fin THEN
+        RETURN NEW;
+    END IF;
+
     IF NEW.estado NOT IN ('cancelada', 'no_asistio') THEN
         IF EXISTS (
             SELECT 1 FROM agenda.citas
