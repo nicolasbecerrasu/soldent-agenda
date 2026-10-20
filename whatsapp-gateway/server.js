@@ -403,8 +403,9 @@ app.get('/reconnect', async (req, res) => {
 // Evolution API compatibility & direct send endpoint
 async function handleSendText(req, res) {
   try {
-    const rawNumber = req.body.number || req.body.phone || req.body.to || req.body.target;
-    const rawText = req.body.text !== undefined ? req.body.text : (req.body.message !== undefined ? req.body.message : '');
+    const b = req.body || {};
+    const rawNumber = b.number || b.phone || b.to || b.target;
+    const rawText = b.text !== undefined ? b.text : (b.message !== undefined ? b.message : '');
     const texto = (typeof rawText === 'string' ? rawText : String(rawText || '')).trim();
 
     if (!rawNumber || !texto) {
@@ -455,12 +456,13 @@ app.post('/send-message', handleSendText);
 // Endpoint para envío de ubicación GPS nativa en WhatsApp
 async function handleSendLocation(req, res) {
   try {
-    const rawNumber = req.body.number || req.body.phone || req.body.to || req.body.target;
-    const latitude = Number(req.body.latitude !== undefined ? req.body.latitude : (req.body.degreesLatitude !== undefined ? req.body.degreesLatitude : -17.790337));
-    const longitude = Number(req.body.longitude !== undefined ? req.body.longitude : (req.body.degreesLongitude !== undefined ? req.body.degreesLongitude : -63.182835));
-    const name = req.body.name || 'Soldent - Clínica Odontológica';
-    const address = req.body.address || 'Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra';
-    const url = req.body.url || `https://maps.google.com/?q=${latitude},${longitude}`;
+    const b = req.body || {};
+    const rawNumber = b.number || b.phone || b.to || b.target;
+    const latitude = Number(b.latitude !== undefined ? b.latitude : (b.degreesLatitude !== undefined ? b.degreesLatitude : -17.790337));
+    const longitude = Number(b.longitude !== undefined ? b.longitude : (b.degreesLongitude !== undefined ? b.degreesLongitude : -63.182835));
+    const name = b.name || 'Soldent - Clínica Odontológica';
+    const address = b.address || 'Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra';
+    const url = b.url || `https://maps.google.com/?q=${latitude},${longitude}`;
 
     if (!rawNumber) {
       return res.status(400).json({ error: 'Falta parámetro: number es requerido' });
