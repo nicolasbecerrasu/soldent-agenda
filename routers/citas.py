@@ -367,7 +367,7 @@ button:active{{transform:scale(0.98)}}
     <button class="no" onclick="responder('cancelar')">❌ Cancelar Cita</button>
   </div>
   <div id="msg" class="msg"></div>
-  <div class="footer">Calle Lemoine 407 esq. Vallegrande<br>Santa Cruz de la Sierra, Bolivia</div>
+  <div class="footer">Calle Parapetí (Lemoine) 407 esq. Vallegrande<br>Santa Cruz de la Sierra, Bolivia</div>
 </div>
 <script>
 async function responder(accion){{

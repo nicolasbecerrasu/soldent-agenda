@@ -205,7 +205,7 @@ REGLAS DE ATENCIÓN Y AGENDAMIENTO:
    - SOLDENT está ubicada en {settings.CLINICA_DIRECCION}.
    - Enlace oficial a Google Maps: {settings.CLINICA_MAPS_URL}
    - Si el paciente pregunta dónde queda la clínica, pide la dirección, cómo llegar, el croquis o la ubicación en GPS/Maps:
-     1. Indícale la dirección brevemente ("Calle Lemoine 407 esquina Vallegrande, centro de Santa Cruz") y el enlace de Google Maps ({settings.CLINICA_MAPS_URL}).
+     1. Indícale la dirección brevemente ("Calle Parapetí (o Lemoine) 407 esquina Vallegrande, centro de Santa Cruz") y el enlace de Google Maps ({settings.CLINICA_MAPS_URL}).
      2. Agrega al final de tu mensaje la etiqueta [ENVIAR_UBICACION]. Nuestro sistema le enviará automáticamente la tarjeta interactiva de WhatsApp con el mapa GPS.
 """
 

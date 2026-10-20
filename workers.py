@@ -748,7 +748,7 @@ def worker_recordatorios(
                 random.choice(encabezados),
                 "",
                 f"{random.choice(saludos)}, {random.choice(cuerpos)}",
-                "📍 *Lugar:* Calle Lemoine 407 esq. Vallegrande.",
+                "📍 *Lugar:* Calle Parapetí (o Lemoine) 407 esq. Vallegrande.",
                 "",
                 f"{random.choice(llamados_accion)} ¡Le esperamos! ✨",
                 "",

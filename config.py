@@ -25,7 +25,7 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     EVOLUTION_API_URL: str = os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")
     DEFAULT_COUNTRY_CODE: str = os.getenv("DEFAULT_COUNTRY_CODE", "+591")
-    CLINICA_DIRECCION: str = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra, Bolivia")
+    CLINICA_DIRECCION: str = os.getenv("CLINICA_DIRECCION", "Calle Parapetí (o Lemoine) 407 esquina Vallegrande, Santa Cruz de la Sierra, Bolivia")
     CLINICA_NOMBRE: str = os.getenv("CLINICA_NOMBRE", "Soldent - Clínica Odontológica")
     CLINICA_LATITUD: float = float(os.getenv("CLINICA_LATITUD", "-17.790337"))
     CLINICA_LONGITUD: float = float(os.getenv("CLINICA_LONGITUD", "-63.182835"))

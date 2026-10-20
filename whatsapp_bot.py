@@ -297,12 +297,13 @@ async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, te
         "donde atienden", "dónde atienden", "direccion", "dirección",
         "gps", "mapa", "croquis", "como llegar", "cómo llegar",
         "como llego", "cómo llego", "pasar ubicacion", "pasar ubicación",
-        "mandar ubicacion", "mandar ubicación", "pasa la ubicacion", "pasa la ubicación"
+        "mandar ubicacion", "mandar ubicación", "pasa la ubicacion", "pasa la ubicación",
+        "parapeti", "parapetí", "calle parapeti", "calle parapetí", "lemoine", "calle lemoine"
     ):
         safe_print(f"📍 [Ubicación Directa] Paciente {nombre} ({tel_paciente}) solicitó ubicación GPS.")
         msg_ubi = (
             f"📍 *SOLDENT - Clínica Odontológica*\n\n"
-            f"Estamos en la *Calle Lemoine 407 esquina Vallegrande*, en pleno centro de Santa Cruz de la Sierra.\n\n"
+            f"Estamos en la *Calle Parapetí (o Lemoine) 407 esquina Vallegrande*, en pleno centro de Santa Cruz de la Sierra.\n\n"
             f"🗺️ *Google Maps:* {settings.CLINICA_MAPS_URL}\n"
             "⏰ *Horarios:* Lun-Vie 09:00-12:00 y 15:30-19:30 | Sáb 09:00-12:00\n\n"
             "¡Aquí le envío también nuestra tarjeta de ubicación GPS interactiva! 🚗✨"
@@ -331,7 +332,8 @@ async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, te
                 "donde estan", "dónde están", "donde queda", "dónde queda",
                 "donde atienden", "dónde atienden", "como llegar", "cómo llegar",
                 "como llego", "cómo llego", "direccion", "dirección",
-                "croquis", "gps", "google maps", "mapa"
+                "croquis", "gps", "google maps", "mapa",
+                "parapeti", "parapetí", "lemoine"
             )
         )
         texto_respuesta = texto_respuesta.replace("[ENVIAR_UBICACION]", "").strip()

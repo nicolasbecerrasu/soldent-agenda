@@ -41,7 +41,7 @@ async def enviar_ubicacion_whatsapp(
     lat = latitude if latitude is not None else getattr(settings, "CLINICA_LATITUD", -17.790337)
     lng = longitude if longitude is not None else getattr(settings, "CLINICA_LONGITUD", -63.182835)
     nombre_lugar = name or getattr(settings, "CLINICA_NOMBRE", "Soldent - Clínica Odontológica")
-    dir_lugar = address or getattr(settings, "CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra")
+    dir_lugar = address or getattr(settings, "CLINICA_DIRECCION", "Calle Parapetí (o Lemoine) 407 esquina Vallegrande, Santa Cruz de la Sierra")
 
     url = f"{settings.EVOLUTION_API_URL}/send-location"
     try:

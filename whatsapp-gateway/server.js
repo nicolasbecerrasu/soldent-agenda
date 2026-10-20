@@ -461,7 +461,7 @@ async function handleSendLocation(req, res) {
     const latitude = Number(b.latitude !== undefined ? b.latitude : (b.degreesLatitude !== undefined ? b.degreesLatitude : -17.790337));
     const longitude = Number(b.longitude !== undefined ? b.longitude : (b.degreesLongitude !== undefined ? b.degreesLongitude : -63.182835));
     const name = b.name || 'Soldent - Clínica Odontológica';
-    const address = b.address || 'Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra';
+    const address = b.address || 'Calle Parapetí (Lemoine) 407 esquina Vallegrande, Santa Cruz de la Sierra';
     const url = b.url || `https://maps.google.com/?q=${latitude},${longitude}`;
 
     if (!rawNumber) {
