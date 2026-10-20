@@ -452,6 +452,66 @@ async function handleSendText(req, res) {
 app.post('/message/sendText/:instance', handleSendText);
 app.post('/send-message', handleSendText);
 
+// Endpoint para envío de ubicación GPS nativa en WhatsApp
+async function handleSendLocation(req, res) {
+  try {
+    const rawNumber = req.body.number || req.body.phone || req.body.to || req.body.target;
+    const latitude = Number(req.body.latitude !== undefined ? req.body.latitude : (req.body.degreesLatitude !== undefined ? req.body.degreesLatitude : -17.790337));
+    const longitude = Number(req.body.longitude !== undefined ? req.body.longitude : (req.body.degreesLongitude !== undefined ? req.body.degreesLongitude : -63.182835));
+    const name = req.body.name || 'Soldent - Clínica Odontológica';
+    const address = req.body.address || 'Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra';
+    const url = req.body.url || `https://maps.google.com/?q=${latitude},${longitude}`;
+
+    if (!rawNumber) {
+      return res.status(400).json({ error: 'Falta parámetro: number es requerido' });
+    }
+
+    if (!sock || !isConnected) {
+      return res.status(503).json({ error: 'WhatsApp no está conectado todavía. Por favor escanea el código QR en http://localhost:8080' });
+    }
+
+    let targetJid = rawNumber;
+    if (typeof rawNumber === 'string' && (rawNumber.includes('@lid') || rawNumber.includes('@s.whatsapp.net'))) {
+      targetJid = rawNumber;
+    } else {
+      const clean = String(rawNumber).replace(/\D/g, '');
+      targetJid = `${clean}@s.whatsapp.net`;
+    }
+
+    // Retardo breve de presencia humana
+    try {
+      await sock.sendPresenceUpdate('composing', targetJid);
+      await new Promise((r) => setTimeout(r, 1200));
+      await sock.sendPresenceUpdate('paused', targetJid);
+    } catch (e) {}
+
+    await sock.sendMessage(targetJid, {
+      location: {
+        degreesLatitude: latitude,
+        degreesLongitude: longitude,
+        name: name,
+        address: address,
+        url: url
+      }
+    });
+
+    console.log(`[WhatsApp OUT Location] 📍 Tarjeta GPS enviada con éxito a ${targetJid}: ${name} (${latitude}, ${longitude})`);
+
+    try {
+      await sock.sendPresenceUpdate('available');
+    } catch (e) {}
+
+    res.json({ status: 'SUCCESS', message: 'Ubicación GPS enviada correctamente', target: targetJid });
+  } catch (err) {
+    console.error('[WhatsApp OUT Location Error]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+app.post('/send-location', handleSendLocation);
+app.post('/message/sendLocation/:instance', handleSendLocation);
+app.post('/message/sendLocation', handleSendLocation);
+
 // Profile picture update endpoint (Evolution API compatibility)
 async function handleUpdateProfilePicture(req, res) {
   try {

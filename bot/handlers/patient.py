@@ -200,6 +200,13 @@ REGLAS DE ATENCIÓN Y AGENDAMIENTO:
    - En WhatsApp los pacientes leen en el móvil: las respuestas deben ser BREVES, directas y cordiales (máximo 2 a 3 líneas).
    - PROHIBIDO enviar parrafadas explicativas, mensajes recargados o discursos de bienvenida en medio de una conversación.
    - Ve directo al grano con amabilidad y educación cruceña.
+
+7. UBICACIÓN, DIRECCIÓN Y GPS:
+   - SOLDENT está ubicada en {settings.CLINICA_DIRECCION}.
+   - Enlace oficial a Google Maps: {settings.CLINICA_MAPS_URL}
+   - Si el paciente pregunta dónde queda la clínica, pide la dirección, cómo llegar, el croquis o la ubicación en GPS/Maps:
+     1. Indícale la dirección brevemente ("Calle Lemoine 407 esquina Vallegrande, centro de Santa Cruz") y el enlace de Google Maps ({settings.CLINICA_MAPS_URL}).
+     2. Agrega al final de tu mensaje la etiqueta [ENVIAR_UBICACION]. Nuestro sistema le enviará automáticamente la tarjeta interactiva de WhatsApp con el mapa GPS.
 """
 
 def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_paciente: str) -> str:
@@ -383,9 +390,12 @@ def procesar_mensaje_con_gemini(remitente: str, nombre: str, texto: str, tel_pac
         return msg_resp
 
     # Si fue respuesta conversacional normal, limpiar posibles etiquetas internas y devolver
-    texto_limpio = re.sub(r"\[(RESERVAR|CONFIRMAR_CITA|CANCELAR_CITA):?[^\]]*\]", "", respuesta_raw).strip()
+    enviar_gps = "[ENVIAR_UBICACION]" in respuesta_raw
+    texto_limpio = re.sub(r"\[(RESERVAR|CONFIRMAR_CITA|CANCELAR_CITA|ENVIAR_UBICACION):?[^\]]*\]", "", respuesta_raw).strip()
     if not texto_limpio:
         texto_limpio = MENSAJE_OFICIAL_DEFAULT
 
     historial.append({"role": "model", "text": texto_limpio})
+    if enviar_gps:
+        texto_limpio = f"{texto_limpio} [ENVIAR_UBICACION]"
     return texto_limpio

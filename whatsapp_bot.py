@@ -19,7 +19,7 @@ from workers import (
     worker_control_mensual_ortodoncia,
 )
 from services.gemini_ai import safe_print, llamar_gemini_http
-from services.whatsapp_gateway import enviar_mensaje_whatsapp
+from services.whatsapp_gateway import enviar_mensaje_whatsapp, enviar_ubicacion_whatsapp
 from services.alertas import vigilar_conexion_whatsapp
 from services.booking_tools import consultar_disponibilidad, crear_cita
 from bot.state import historial_sesiones, mensajes_procesados_recientes
@@ -290,6 +290,32 @@ async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, te
         await enviar_mensaje_whatsapp(remitente, msg_conf_resp)
         return {"ok": True, "confirmada": bool(info_c and not info_c.get("ya_estaba_confirmada")), "respuesta": msg_conf_resp}
 
+    # 4. SOLICITUD DIRECTA DE UBICACIÓN / GPS
+    if texto_limpio_cmd in (
+        "ubicacion", "ubicación", "donde quedan", "dónde quedan",
+        "donde estan", "dónde están", "donde queda", "dónde queda",
+        "donde atienden", "dónde atienden", "direccion", "dirección",
+        "gps", "mapa", "croquis", "como llegar", "cómo llegar",
+        "como llego", "cómo llego", "pasar ubicacion", "pasar ubicación",
+        "mandar ubicacion", "mandar ubicación", "pasa la ubicacion", "pasa la ubicación"
+    ):
+        safe_print(f"📍 [Ubicación Directa] Paciente {nombre} ({tel_paciente}) solicitó ubicación GPS.")
+        msg_ubi = (
+            f"📍 *SOLDENT - Clínica Odontológica*\n\n"
+            f"Estamos en la *Calle Lemoine 407 esquina Vallegrande*, en pleno centro de Santa Cruz de la Sierra.\n\n"
+            f"🗺️ *Google Maps:* {settings.CLINICA_MAPS_URL}\n"
+            "⏰ *Horarios:* Lun-Vie 09:00-12:00 y 15:30-19:30 | Sáb 09:00-12:00\n\n"
+            "¡Aquí le envío también nuestra tarjeta de ubicación GPS interactiva! 🚗✨"
+        )
+        if remitente not in historial_sesiones:
+            historial_sesiones[remitente] = []
+        historial_sesiones[remitente].append({"role": "user", "text": f"Paciente ({nombre}): {texto}"})
+        historial_sesiones[remitente].append({"role": "model", "text": msg_ubi})
+
+        await enviar_mensaje_whatsapp(remitente, msg_ubi)
+        await enviar_ubicacion_whatsapp(remitente)
+        return {"ok": True, "ubicacion": True, "respuesta": msg_ubi}
+
     try:
         texto_respuesta = await asyncio.to_thread(
             procesar_mensaje_con_gemini,
@@ -298,8 +324,24 @@ async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, te
         if not texto_respuesta:
             texto_respuesta = MENSAJE_OFICIAL_DEFAULT
 
+        # Detectar si se debe enviar tarjeta GPS (vía tag de Gemini o mención explícita en el mensaje)
+        debe_enviar_gps = ("[ENVIAR_UBICACION]" in texto_respuesta) or any(
+            k in texto_limpio_cmd for k in (
+                "ubicacion", "ubicación", "donde quedan", "dónde quedan",
+                "donde estan", "dónde están", "donde queda", "dónde queda",
+                "donde atienden", "dónde atienden", "como llegar", "cómo llegar",
+                "como llego", "cómo llego", "direccion", "dirección",
+                "croquis", "gps", "google maps", "mapa"
+            )
+        )
+        texto_respuesta = texto_respuesta.replace("[ENVIAR_UBICACION]", "").strip()
+
         safe_print(f"[Gemini OUT]: {texto_respuesta}\n")
         await enviar_mensaje_whatsapp(remitente, texto_respuesta)
+
+        if debe_enviar_gps:
+            safe_print(f"📍 [Ubicación GPS] Despachando tarjeta interactiva a {nombre} ({remitente})...")
+            await enviar_ubicacion_whatsapp(remitente)
 
         # Si el paciente consultó por martes o jueves, notificar por cortesía a la Dra. Pamela
         texto_low = texto.lower()

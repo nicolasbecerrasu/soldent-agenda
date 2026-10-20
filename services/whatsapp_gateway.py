@@ -26,3 +26,40 @@ async def enviar_mensaje_whatsapp(numero: str, texto: str):
                 safe_print(f"[Bot OUT Error] {resp.status_code}: {resp.text}")
     except Exception as e:
         safe_print(f"[Bot OUT Error] No se pudo conectar con la pasarela WhatsApp ({url}): {e}")
+
+async def enviar_ubicacion_whatsapp(
+    numero: str,
+    latitude: float = None,
+    longitude: float = None,
+    name: str = None,
+    address: str = None
+):
+    """Envía la ubicación GPS oficial de Soldent en WhatsApp como tarjeta interactiva de mapa."""
+    # Breve pausa natural de 1.5s para que entre de forma secuencial tras el mensaje de texto
+    await asyncio.sleep(1.5)
+
+    lat = latitude if latitude is not None else getattr(settings, "CLINICA_LATITUD", -17.790337)
+    lng = longitude if longitude is not None else getattr(settings, "CLINICA_LONGITUD", -63.182835)
+    nombre_lugar = name or getattr(settings, "CLINICA_NOMBRE", "Soldent - Clínica Odontológica")
+    dir_lugar = address or getattr(settings, "CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra")
+
+    url = f"{settings.EVOLUTION_API_URL}/send-location"
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post(url, json={
+                "number": numero,
+                "latitude": lat,
+                "longitude": lng,
+                "name": nombre_lugar,
+                "address": dir_lugar,
+                "url": f"https://maps.google.com/?q={lat},{lng}"
+            })
+            if resp.status_code == 200:
+                safe_print(f"📍 [Bot OUT Ubicación GPS] Tarjeta interactiva enviada con éxito a {numero}")
+                return True
+            else:
+                safe_print(f"⚠️ [Bot OUT Ubicación Error] {resp.status_code}: {resp.text}")
+                return False
+    except Exception as e:
+        safe_print(f"⚠️ [Bot OUT Ubicación Error] No se pudo enviar ubicación ({url}): {e}")
+        return False

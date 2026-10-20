@@ -26,7 +26,10 @@ class Settings:
     EVOLUTION_API_URL: str = os.getenv("EVOLUTION_API_URL", "http://127.0.0.1:8080")
     DEFAULT_COUNTRY_CODE: str = os.getenv("DEFAULT_COUNTRY_CODE", "+591")
     CLINICA_DIRECCION: str = os.getenv("CLINICA_DIRECCION", "Calle Lemoine 407 esquina Vallegrande, Santa Cruz de la Sierra, Bolivia")
-    CLINICA_NOMBRE: str = os.getenv("CLINICA_NOMBRE", "Soldent - Soluciones Dentales")
+    CLINICA_NOMBRE: str = os.getenv("CLINICA_NOMBRE", "Soldent - Clínica Odontológica")
+    CLINICA_LATITUD: float = float(os.getenv("CLINICA_LATITUD", "-17.790337"))
+    CLINICA_LONGITUD: float = float(os.getenv("CLINICA_LONGITUD", "-63.182835"))
+    CLINICA_MAPS_URL: str = os.getenv("CLINICA_MAPS_URL", "https://maps.google.com/?q=-17.790337,-63.182835")
     API_BACKEND_URL: str = os.getenv("API_BACKEND_URL", "https://soldent-agenda.onrender.com")
 
 settings = Settings()
