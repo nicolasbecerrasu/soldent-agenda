@@ -64,7 +64,7 @@ export const DraCard: React.FC<Props> = ({
             </div>
             <div className="flex items-center gap-2">
               <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>Consultorio Soldent • Santa Cruz de la Sierra (Calle Parapetí/Lemoine 407 esq. Vallegrande)</span>
+              <span>Consultorio Soldent • Santa Cruz de la Sierra (Calle Parapetí/Lemoine #407, casi esq. Vallegrande)</span>
             </div>
           </div>
         </div>

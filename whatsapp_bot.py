@@ -302,8 +302,8 @@ async def _procesar_mensaje_paciente(remitente: str, nombre: str, texto: str, te
     ):
         safe_print(f"📍 [Ubicación Directa] Paciente {nombre} ({tel_paciente}) solicitó ubicación GPS.")
         msg_ubi = (
-            f"📍 *SOLDENT - Clínica Odontológica*\n\n"
-            f"Estamos en la *Calle Parapetí (o Lemoine) 407 esquina Vallegrande*, en pleno centro de Santa Cruz de la Sierra.\n\n"
+            f"📍 *SOLDENT - Clínica Odontológica (Dra. Pamela Pinto)*\n\n"
+            f"Estamos en la *Calle Parapetí (o Lemoine) #407, casi esquina Vallegrande* (a pasos de la esquina, a una casa del Condominio Portales), en pleno centro de Santa Cruz de la Sierra.\n\n"
             f"🗺️ *Google Maps:* {settings.CLINICA_MAPS_URL}\n"
             "⏰ *Horarios:* Lun-Vie 09:00-12:00 y 15:30-19:30 | Sáb 09:00-12:00\n\n"
             "¡Aquí le envío también nuestra tarjeta de ubicación GPS interactiva! 🚗✨"

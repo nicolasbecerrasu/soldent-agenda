@@ -213,7 +213,7 @@ export function PantallaPin({ onExito }: PantallaPinProps) {
       {/* Pie de pantalla */}
       <div className="text-center text-[11px] text-slate-400 pb-1">
         <p>Soldent • Clínica Odontológica</p>
-        <p className="mt-0.5">Calle Parapetí (Lemoine) 407 esq. Vallegrande, Santa Cruz</p>
+        <p className="mt-0.5">Calle Parapetí (Lemoine) #407, casi esq. Vallegrande, Santa Cruz</p>
       </div>
     </div>
   );

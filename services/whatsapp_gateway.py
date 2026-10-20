@@ -39,10 +39,10 @@ async def enviar_ubicacion_whatsapp(
     # Breve pausa natural de 1.5s para que entre de forma secuencial tras el mensaje de texto
     await asyncio.sleep(1.5)
 
-    lat = latitude if latitude is not None else getattr(settings, "CLINICA_LATITUD", -17.79090)
-    lng = longitude if longitude is not None else getattr(settings, "CLINICA_LONGITUD", -63.18520)
-    nombre_lugar = name or getattr(settings, "CLINICA_NOMBRE", "Soldent - Clínica Odontológica")
-    dir_lugar = address or getattr(settings, "CLINICA_DIRECCION", "Calle Parapetí (o Lemoine) 407 esquina Vallegrande, Santa Cruz de la Sierra")
+    lat = latitude if latitude is not None else getattr(settings, "CLINICA_LATITUD", -17.79082)
+    lng = longitude if longitude is not None else getattr(settings, "CLINICA_LONGITUD", -63.18514)
+    nombre_lugar = name or getattr(settings, "CLINICA_NOMBRE", "SOLDENT (Dra. Pamela Pinto)")
+    dir_lugar = address or getattr(settings, "CLINICA_DIRECCION", "Calle Parapetí (o Lemoine) 407, casi esquina Vallegrande, Santa Cruz de la Sierra")
     maps_url = url or getattr(settings, "CLINICA_MAPS_URL", "https://maps.app.goo.gl/WtxX2ApFSZTdxNK67")
 
     gw_url = f"{settings.EVOLUTION_API_URL}/send-location"
